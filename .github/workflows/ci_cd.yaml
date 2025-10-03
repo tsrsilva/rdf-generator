@@ -34,7 +34,7 @@ jobs:
           conda env create -f environment.yml -n tool2_env
 
           # Activate environment for subsequent steps
-          echo "conda activate tool2_env" >> $GITHUB_ENV
+          # echo "conda activate tool2_env" >> $GITHUB_ENV
 
       # 3. Install any missing pip packages
       - name: Install pip dependencies
