@@ -19,13 +19,7 @@ jobs:
         with:
           fetch-depth: 0  # needed for tagging
 
-      # 2. Set up Python
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      # 3. Set up Conda environment
+      # 2. Set up Conda environment
       - name: Set up Conda
         uses: conda-incubator/setup-miniconda@v2
         with:
@@ -34,21 +28,21 @@ jobs:
           environment-file: environment.yml
           activate-environment: tool2_env
 
-      # 4. Install pytest if not included
-      - name: Install pytest
+      # 3. Install any missing pip packages
+      - name: Install pip dependencies
         shell: bash -l {0}
         run: |
           conda activate tool2_env
-          pip install pytest
+          pip install --upgrade pip
 
-      # 5. Run tests (pipeline stops here if tests fail)
+      # 4. Run tests (pipeline stops here if tests fail)
       - name: Run tests
         shell: bash -l {0}
         run: |
           conda activate tool2_env
           pytest tests/ --maxfail=1 --disable-warnings -v
 
-      # 6. Determine next semantic version
+      # 5. Determine next semantic version
       - name: Get next semantic version
         id: semver
         shell: bash -l {0}
@@ -57,7 +51,7 @@ jobs:
           VERSION=$(python -m semantic_release version --print)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # 7. Tag Git commit with new version
+      # 6. Tag Git commit with new version
       - name: Tag commit
         if: github.ref == 'refs/heads/main'
         run: |
@@ -68,24 +62,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 8. Build Docker image
+      # 7. Build Docker image
       - name: Build Docker image
         run: |
           VERSION=${{ steps.semver.outputs.version }}
           docker build -t rdf-generator:latest -t rdf-generator:$VERSION .
 
-      # 9. Validate Docker Compose setup
+      # 8. Validate Docker Compose setup
       - name: Validate Docker Compose build
         run: |
           docker compose -f docker-compose.yml config
           docker compose -f docker-compose.yml build
 
-      # 10. Run container smoke test
+      # 9. Run container smoke test
       - name: Run container smoke test
         run: |
           docker compose -f docker-compose.yml run --rm rdf-generator --help
 
-      # 11. Push Docker image (requires secrets: DOCKER_USERNAME, DOCKER_PASSWORD)
+      # 10. Push Docker image (requires secrets: DOCKER_USERNAME, DOCKER_PASSWORD)
       - name: Push Docker image
         if: github.ref == 'refs/heads/main'
         run: |
@@ -95,15 +89,3 @@ jobs:
           docker tag rdf-generator:$VERSION ${{ secrets.DOCKER_USERNAME }}/rdf-generator:latest
           docker push ${{ secrets.DOCKER_USERNAME }}/rdf-generator:$VERSION
           docker push ${{ secrets.DOCKER_USERNAME }}/rdf-generator:latest
-
-      # 12. Publish to PyPI
-      - name: Publish to PyPI
-        shell: bash -l {0}
-        if: github.ref == 'refs/heads/main'
-        run: |
-          conda activate tool2_env
-          python -m semantic_release publish
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PYPI_USERNAME: ${{ secrets.PYPI_USERNAME }}
-          PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
