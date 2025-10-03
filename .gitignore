@@ -1,0 +1,58 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+*.dist-info/
+*.log
+
+# Virtual environments
+env/
+tool2_env/
+.venv/
+venv/
+
+# =========================
+# Conda
+# =========================
+*.conda
+*.env
+conda-meta/
+
+# =========================
+# Docker
+# =========================
+*.dockerignore
+Dockerfile
+docker-compose.override.yml
+docker-compose.override.yaml
+docker-compose.*.yml
+
+# Ignore container outputs if you don't want to track them
+outputs/
+
+# =========================
+# IDEs and editors
+# =========================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# Logs and temp files
+# =========================
+*.log
+*.tmp
+*.bak

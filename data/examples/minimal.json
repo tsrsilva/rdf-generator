@@ -1,0 +1,181 @@
+[
+  {
+    "Char_ID": "C3",
+    "Organism": {
+      "Label": "adult organism",
+      "URI": "http://purl.obolibrary.org/obo/UBERON_0007023"
+    },
+    "Locators": [
+      {
+        "Locator 1 label": "labrum",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/HAO_0000456"
+      },
+      {
+        "Locator 2 label": "anterior surface",
+        "Locator 2 URI": "http://purl.obolibrary.org/obo/BSPO_0000371"
+      },
+      {
+        "Locator 3 label": "row of erect setae",
+        "Locator 3 URI": null
+      }
+    ],
+    "Variable": {
+      "Variable label": "shape",
+      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000052",
+      "Variable comment": null
+    },
+    "States": [
+      {
+        "State 0 label": "not U-shaped",
+        "State 0 URI": null,
+        "State 0 token": "0"
+      },
+      {
+        "State 1 label": "U-shaped",
+        "State 1 URI": "http://purl.obolibrary.org/obo/PATO_0001879",
+        "State 1 token": "1"
+      }
+    ],
+    "Tag": "transformational"
+  },
+  {
+    "Char_ID": "C6",
+    "Organism": {
+      "Label": "adult organism",
+      "URI": "http://purl.obolibrary.org/obo/UBERON_0007023"
+    },
+    "Locators": [
+      {
+        "Locator 1 label": "stipes",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/HAO_0000958"
+      },
+      {
+        "Locator 2 label": "basistipital process",
+        "Locator 2 URI": "http://purl.obolibrary.org/obo/HAO_0002090"
+      }
+    ],
+    "Variable": {
+      "Variable label": "shape",
+      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000052",
+      "Variable comment": null
+    },
+    "States": [
+      {
+        "State 0 label": "shortened",
+        "State 0 URI": "http://purl.obolibrary.org/obo/PATO_0002364",
+        "State 0 token": "0"
+      },
+      {
+        "State 1 label": "elongated",
+        "State 1 URI": "http://purl.obolibrary.org/obo/PATO_0001154",
+        "State 1 token": "1"
+      }
+    ],
+    "Tag": "transformational"
+  },
+  {
+    "Char_ID": "C15",
+    "Organism": {
+      "Label": "adult organism",
+      "URI": "http://purl.obolibrary.org/obo/UBERON_0007023"
+    },
+    "Locators": [
+      {
+        "Locator 1 label": "galea",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/HAO_0000368"
+      },
+      {
+        "Locator 2 label": "galeal blade",
+        "Locator 2 URI": null
+      },
+      {
+        "Locator 3 label": "posterior margin",
+        "Locator 3 URI": "http://purl.obolibrary.org/obo/BSPO_0000672"
+      }
+    ],
+    "Variable": {
+      "Variable label": "composition",
+      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000025",
+      "Variable comment": null
+    },
+    "States": [
+      {
+        "State 0 label": "sclerotized",
+        "State 0 URI": null,
+        "State 0 token": "0"
+      },
+      {
+        "State 1 label": "desclerotized",
+        "State 1 URI": null,
+        "State 1 token": "1"
+      }
+    ],
+    "Tag": "transformational"
+  },
+  {
+    "Char_ID": "C16",
+    "Organism": {
+      "Label": "adult organism",
+      "URI": "http://purl.obolibrary.org/obo/UBERON_0007023"
+    },
+    "Locators": [
+      {
+        "Locator 1 label": "lacinia",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/AISM_0000026"
+      },
+      {
+        "Locator 2 label": "surrounding cuticle",
+        "Locator 2 URI": null
+      }
+    ],
+    "Variable": {
+      "Variable label": "texture",
+      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000150",
+      "Variable comment": null
+    },
+    "States": [
+      {
+        "State 0 label": "smooth",
+        "State 0 URI": "http://purl.obolibrary.org/obo/PATO_0000701",
+        "State 0 token": "0"
+      },
+      {
+        "State 1 label": "striate",
+        "State 1 URI": null,
+        "State 1 token": "1"
+      }
+    ],
+    "Tag": "transformational"
+  },
+  {
+    "Char_ID": "C17",
+    "Organism": {
+      "Label": "adult organism",
+      "URI": "http://purl.obolibrary.org/obo/UBERON_0007023"
+    },
+    "Locators": [
+      {
+        "Locator 1 label": "lacinia",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/AISM_0000026"
+      }
+    ],
+    "Variable": {
+      "Variable label": "composition",
+      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000025",
+      "Variable comment": null
+    },
+    "States": [
+      {
+        "State 0 label": "sclerotized",
+        "State 0 URI": null,
+        "State 0 token": "0"
+      },
+      {
+        "State 1 label": "membranous",
+        "State 1 URI": null,
+        "State 1 token": "1"
+      }
+    ],
+    "Tag": "transformational"
+  }
+]

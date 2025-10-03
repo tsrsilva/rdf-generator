@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: 2025 Thiago S. R. Silva, Diego S. Porto
+# SPDX-License-Identifier: MIT
+
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix phb: <http://www.phenobees.org/ontology#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+#############################
+# NeomorphicPhenotypeShape #
+#############################
+
+phb:NeomorphicPhenotypeShape
+    a sh:NodeShape ;
+    sh:targetClass phb:NeomorphicPhenotypeStatement ;
+    
+    sh:property [
+        sh:path phb:has_organismal_component ;
+        sh:minCount 1 ;
+    ] ;
+    
+    sh:property [
+        sh:path phb:has_entity_component ;
+        sh:minCount 1 ;
+    ] ;
+
+    sh:property [
+        sh:path phb:has_variable_component ;
+        sh:maxCount 0 ;  # Variable should not be present
+    ] .
+
+##############################################
+# TransformationalSimplePhenotypeShape #
+##############################################
+
+phb:TransformationalSimplePhenotypeShape
+    a sh:NodeShape ;
+    sh:targetClass phb:TransformationalSimplePhenotypeStatement ;
+
+    sh:property [
+        sh:path phb:has_organismal_component ;
+        sh:minCount 1 ;
+    ] ;
+
+    sh:property [
+        sh:path phb:has_entity_component ;
+        sh:minCount 1 ;
+    ] ;
+
+    sh:property [
+        sh:path phb:has_variable_component ;
+        sh:minCount 1 ;
+        sh:node [
+            a sh:NodeShape ;
+            sh:property [
+                sh:path rdfs:label ;
+                sh:minCount 1 ;
+            ] ;
+            sh:property [
+                sh:path owl:sameAs ;
+                sh:minCount 1 ;
+            ] ;
+            sh:property [
+                sh:path rdfs:comment ;
+                sh:maxCount 0 ;
+            ] ;
+        ] ;
+    ] .
+
+##############################################
+# TransformationalComplexPhenotypeShape #
+##############################################
+
+phb:TransformationalComplexPhenotypeShape
+    a sh:NodeShape ;
+    sh:targetClass phb:TransformationalComplexPhenotypeStatement ;
+
+    sh:property [
+        sh:path phb:has_organismal_component ;
+        sh:minCount 1 ;
+    ] ;
+
+    sh:property [
+        sh:path phb:has_entity_component ;
+        sh:minCount 1 ;
+    ] ;
+
+    sh:property [
+        sh:path phb:has_variable_component ;
+        sh:minCount 1 ;
+        sh:node [
+            a sh:NodeShape ;
+            sh:property [
+                sh:path rdfs:label ;
+                sh:minCount 1 ;
+            ] ;
+            sh:property [
+                sh:path owl:sameAs ;
+                sh:minCount 1 ;
+            ] ;
+            sh:property [
+                sh:path rdfs:comment ;
+                sh:minCount 1 ;
+            ] ;
+        ] ;
+    ] .

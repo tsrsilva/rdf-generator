@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2025 Thiago S. R. Silva, Diego S. Porto
+# SPDX-License-Identifier: MIT
+
+[project]
+name = "rdf-generator"
+version = "0.0.1"
+description = "Generates RDF phenotype graphs from JSON and NEXUS matrices."
+authors = [
+    { name = "Thiago S. R. Silva", email = "thiago.sanchesranzanidasilva@helsinki.fi" },
+    { name = "Diego S. Porto", email = "diego.sassoporto@helsinki.fi" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+keywords = ["rdf", "phenotype", "dendropy", "rdflib", "shacl", "graphviz"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+# Main dependencies
+dependencies = [
+    "rdflib>=6.6",
+    "dendropy>=4.6",
+    "pyshacl>=0.20",
+    "pygraphviz>=1.9",
+    "dendropy>=4.6",
+    "PyYAML>=6.0"
+]
+
+# Optional dependencies for development
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "flake8>=6.0",
+    "black>=24.0",
+    "isort>=6.0",
+    "mypy>=1.5"
+]
+
+# Entry points for CLI
+[project.scripts]
+rdf-generator = "rdf_generator.main:main"
+
+# Semantic Release configuration
+[tool.semantic_release]
+version_variable = "rdf_generator/__init__.py:__version__"
+upload_to_pypi = true
+changelog_file = "CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+include = ["rdf_generator*"]
+exclude = ["dev", "data", "outputs"]
+
+# Build system
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"

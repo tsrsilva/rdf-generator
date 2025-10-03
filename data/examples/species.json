@@ -1,0 +1,72 @@
+[
+  {
+    "input_species_name": "Ancyloscelis_apiformis",
+    "valid_species_name": "Ancyloscelis apiformis (Fabricius, 1793)",
+    "ID": 5039694,
+    "zoobank_identifier": null,
+    "match_level": "species"
+  },
+  {
+    "input_species_name": "Anthidium_porterae",
+    "valid_species_name": "Anthidium porterae Cockerell, 1900",
+    "ID": 1334972,
+    "zoobank_identifier": null,
+    "match_level": "species"
+  },
+  {
+    "input_species_name": "Arhysoceble_picta",
+    "valid_species_name": "Arhysoceble picta (Friese, 1899)",
+    "ID": 1340275,
+    "zoobank_identifier": null,
+    "match_level": "species"
+  },
+  {
+    "input_species_name": "Augochlora_pura",
+    "valid_species_name": "Augochlora pura (Say, 1837)",
+    "ID": 1352791,
+    "zoobank_identifier": null,
+    "match_level": "species"
+  },
+  {
+    "input_species_name": "Coelioxys_octodentata",
+    "valid_species_name": "Coelioxys octodentata Lepeletier, 1841",
+    "ID": 11989800,
+    "zoobank_identifier": null,
+    "match_level": "species"
+  },
+  {
+    "input_species_name": "Euglossa_cordata",
+    "valid_species_name": "Euglossa cordata (Linnaeus, 1758)",
+    "ID": 1340666,
+    "zoobank_identifier": null,
+    "match_level": "species"
+  },
+  {
+    "input_species_name": "Halictus_rubicundus",
+    "valid_species_name": "Halictus rubicundus (Christ, 1791)",
+    "ID": 1353453,
+    "zoobank_identifier": null,
+    "match_level": "species"
+  },
+  {
+    "input_species_name": "Meganomia_gigas",
+    "valid_species_name": "Meganomia gigas Michener, 1981",
+    "ID": 1345938,
+    "zoobank_identifier": null,
+    "match_level": "species"
+  },
+  {
+    "input_species_name": "Melipona_fulva",
+    "valid_species_name": "Melipona fulva Lepeletier, 1836",
+    "ID": 1340103,
+    "zoobank_identifier": null,
+    "match_level": "species"
+  },
+  {
+    "input_species_name": "Partamona_cupira",
+    "valid_species_name": "Partamona cupira (Smith, 1863)",
+    "ID": 1339704,
+    "zoobank_identifier": null,
+    "match_level": "species"
+  }
+]

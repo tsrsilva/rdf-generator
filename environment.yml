@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2025 Thiago S. R. Silva, Diego S. Porto
+# SPDX-License-Identifier: MIT
+
+name: tool2_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - rdflib=7.2.1
+  - pyshacl=0.30.1
+  - pygraphviz=1.14
+  - graphviz=13.1
+  - pytest=8.4.2
+  - pip
+  - pyyaml>=6.0
+  - pip:
+      - dendropy==5.0.8
+      - python-semantic-release==10.4.1

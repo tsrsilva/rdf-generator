@@ -1,0 +1,19 @@
+#NEXUS
+
+BEGIN DATA;
+	DIMENSIONS  NTAX=10 NCHAR=5;
+	FORMAT DATATYPE = STANDARD RESPECTCASE GAP = - MISSING = ? SYMBOLS = "01";
+	MATRIX
+	'Arhysoceble_picta'        01100
+	'Ancyloscelis_apiformis'   01000
+	'Melipona_fulva'           01000
+	'Partamona_cupira'         01000
+	'Euglossa_cordata'         00100
+	'Anthidium_porterae'       00100
+	'Coelioxys_octodentata'    01100
+	'Meganomia_gigas'          01000
+	'Halictus_rubicundus'      00000
+	'Augochlora_pura'          00000
+
+;
+END;

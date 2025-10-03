@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2025 Thiago S. R. Silva, Diego S. Porto
+# SPDX-License-Identifier: MIT
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-build-release:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # needed for tagging
+
+      # 2. Set up Python
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      # 3. Set up Conda environment
+      - name: Set up Conda
+        uses: conda-incubator/setup-miniconda@v2
+        with:
+          auto-update-conda: true
+          python-version: 3.10
+          environment-file: environment.yml
+          activate-environment: tool2_env
+
+      # 4. Install pytest if not included
+      - name: Install pytest
+        shell: bash -l {0}
+        run: |
+          conda activate tool2_env
+          pip install pytest
+
+      # 5. Run tests (pipeline stops here if tests fail)
+      - name: Run tests
+        shell: bash -l {0}
+        run: |
+          conda activate tool2_env
+          pytest tests/ --maxfail=1 --disable-warnings -v
+
+      # 6. Determine next semantic version
+      - name: Get next semantic version
+        id: semver
+        shell: bash -l {0}
+        run: |
+          conda activate tool2_env
+          VERSION=$(python -m semantic_release version --print)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      # 7. Tag Git commit with new version
+      - name: Tag commit
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.semver.outputs.version }}" -m "Release ${{ steps.semver.outputs.version }}"
+          git push origin "v${{ steps.semver.outputs.version }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 8. Build Docker image
+      - name: Build Docker image
+        run: |
+          VERSION=${{ steps.semver.outputs.version }}
+          docker build -t rdf-generator:latest -t rdf-generator:$VERSION .
+
+      # 9. Validate Docker Compose setup
+      - name: Validate Docker Compose build
+        run: |
+          docker compose -f docker-compose.yml config
+          docker compose -f docker-compose.yml build
+
+      # 10. Run container smoke test
+      - name: Run container smoke test
+        run: |
+          docker compose -f docker-compose.yml run --rm rdf-generator --help
+
+      # 11. Push Docker image (requires secrets: DOCKER_USERNAME, DOCKER_PASSWORD)
+      - name: Push Docker image
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+          VERSION=${{ steps.semver.outputs.version }}
+          docker tag rdf-generator:$VERSION ${{ secrets.DOCKER_USERNAME }}/rdf-generator:$VERSION
+          docker tag rdf-generator:$VERSION ${{ secrets.DOCKER_USERNAME }}/rdf-generator:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/rdf-generator:$VERSION
+          docker push ${{ secrets.DOCKER_USERNAME }}/rdf-generator:latest
+
+      # 12. Publish to PyPI
+      - name: Publish to PyPI
+        shell: bash -l {0}
+        if: github.ref == 'refs/heads/main'
+        run: |
+          conda activate tool2_env
+          python -m semantic_release publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PYPI_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}

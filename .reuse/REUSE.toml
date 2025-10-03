@@ -1,0 +1,28 @@
+version = 1
+
+[ignore]
+# Python caches, build artifacts, and egg-info
+paths = [
+    ".pytest_cache/",
+    "__pycache__/",
+    "rdf_generator.egg-info/",
+    "build/",
+    "dist/",
+
+    # Output and generated folders
+    "outputs/",
+    "data/input_chars/",
+    "data/nex/",
+    "data/species/",
+    "data/shapes/",
+
+    # Docker and CI/CD files you don't want to license-check
+    "Dockerfile",
+    "docker-compose.yml",
+    ".github/workflows/ci_cd.yaml",
+    "environment.yml",
+
+    # Optional: Ignore hidden files that are purely metadata
+    ".git/",
+    ".gitignore"
+]
