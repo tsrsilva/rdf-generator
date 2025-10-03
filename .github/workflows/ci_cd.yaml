@@ -33,15 +33,12 @@ jobs:
           # Create environment from your original environment.yml
           conda env create -f environment.yml -n tool2_env
 
-          # Activate environment for subsequent steps
-          # echo "conda activate tool2_env" >> $GITHUB_ENV
+          # Debug: list environments
+          conda info --envs
 
       # 3. Install any missing pip packages
       - name: Install pip dependencies
-        shell: bash -l {0}
-        run: |
-          conda activate tool2_env
-          pip install --upgrade pip
+        run: conda run -n tool2_env pip install --upgrade pip
 
       # 4. Run tests (pipeline stops here if tests fail)
       - name: Run tests
@@ -50,10 +47,8 @@ jobs:
       # 5. Determine next semantic version
       - name: Get next semantic version
         id: semver
-        shell: bash -l {0}
         run: |
-          conda activate tool2_env
-          VERSION=$(python -m semantic_release version --print)
+          VERSION=$(conda run -n tool2_env python -m semantic_release version --print)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       # 6. Tag Git commit with new version
