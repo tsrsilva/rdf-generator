@@ -13,7 +13,7 @@ jobs:
   test-build-release:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout repository
+      # 1. Checkout repository with token (needed for tagging)
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
@@ -23,15 +23,22 @@ jobs:
       # 2. Set up Conda environment
       - name: Set up Conda
         run: |
+          # Install Miniconda
           wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
           bash miniconda.sh -b -p $HOME/miniconda
           export PATH="$HOME/miniconda/bin:$PATH"
+
+          # Update conda
           conda update -y conda
+
+          # Create environment from environment.yml
           conda env create -f environment.yml -n tool2_env
+
+          # Debug: list environments
           conda info --envs
 
-      # 3. Install Python package
-      - name: Install Python package
+      # 3. Install your package in editable mode
+      - name: Install package
         run: |
           export PATH="$HOME/miniconda/bin:$PATH"
           conda run -p $HOME/miniconda/envs/tool2_env pip install -e .
@@ -47,12 +54,11 @@ jobs:
         id: semver
         shell: bash -l {0}
         run: |
-          export PATH="$HOME/miniconda/bin:$PATH"
           conda activate tool2_env
           VERSION=$(python -m semantic_release version --print)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # 6. Tag Git commit with new version (authenticated)
+      # 6. Tag Git commit with new version
       - name: Tag commit
         if: github.ref == 'refs/heads/main'
         env:
@@ -61,7 +67,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "v${{ steps.semver.outputs.version }}" -m "Release ${{ steps.semver.outputs.version }}"
-          git push "https://${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" --tags       
+          git push "https://${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" --tags
 
       # 7. Build Docker image
       - name: Build Docker image
@@ -80,7 +86,7 @@ jobs:
         run: |
           docker compose -f docker-compose.yml run --rm rdf-generator --help
 
-      # 10. Push Docker image (requires secrets: DOCKER_USERNAME, DOCKER_PASSWORD)
+      # 10. Push Docker image
       - name: Push Docker image
         if: github.ref == 'refs/heads/main'
         run: |
