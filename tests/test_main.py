@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 import os
+import tempfile
+import importlib
 import pytest
 import yaml
-import rdf_generator.main as rdf_main
+
+# Load module properly
+rdf_main = importlib.import_module("rdf_generator.main")
 
 # Load configuration from project root
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "configs", "config.yaml")
@@ -39,8 +43,6 @@ def test_main_runs(monkeypatch):
     Run the main function to ensure it doesn't crash.
     Redirect output directories to a temporary folder.
     """
-    import tempfile
-
     temp_dir = tempfile.TemporaryDirectory()
     try:
         # Redirect output dirs (these are module-level, not function attributes)
