@@ -4,7 +4,6 @@
 import os
 import pytest
 import yaml
-import tempfile
 import rdf_generator.main as rdf_main
 
 # Load configuration from project root
@@ -40,24 +39,21 @@ def test_main_runs(monkeypatch):
     Run the main function to ensure it doesn't crash.
     Redirect output directories to a temporary folder.
     """
+    import tempfile
+
     temp_dir = tempfile.TemporaryDirectory()
     try:
-        # Redirect output dirs
+        # Redirect output dirs (these are module-level, not function attributes)
         monkeypatch.setattr(rdf_main, "DIR_OUTPUT_TTL", os.path.join(temp_dir.name, "output_ttl"))
         monkeypatch.setattr(rdf_main, "DIR_OUTPUT_PNG", os.path.join(temp_dir.name, "output_png"))
         monkeypatch.setattr(rdf_main, "DIR_COMBINED", os.path.join(temp_dir.name, "combined_graphs"))
         monkeypatch.setattr(rdf_main, "DIR_GRAPHVIZ", os.path.join(temp_dir.name, "graphviz_images"))
         monkeypatch.setattr(rdf_main, "DIR_VALIDATION", os.path.join(temp_dir.name, "validation_reports"))
 
-        # Avoid real folder creation if CI env restricts it
-        monkeypatch.setattr(os, "makedirs", lambda path, exist_ok=True: None)
-
-        # Should not raise exceptions
+        # Run the main() function — this should use the patched paths
         rdf_main.main()
-
     finally:
         temp_dir.cleanup()
-
 
 def test_graph_building():
     """Check that base graph builds with expected namespaces."""
