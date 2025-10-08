@@ -3,14 +3,18 @@
 
 import os
 import pytest
+import yaml
 from rdf_generator import main as rdf_main
 
-# Paths relative to project root
-DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
-INPUT_JSON = os.path.join(DATA_DIR, "input_chars", "PP_full.json")
-NEX_FILE = os.path.join(DATA_DIR, "nex", "2016_PP_matrix.nex")
-SPECIES_FILE = os.path.join(DATA_DIR, "species", "PP_output_report.json")
-SHACL_FILE = os.path.join(DATA_DIR, "shapes", "phenotype_shapes.ttl")
+# Load configuration
+with open(os.path.join(os.path.dirname(__file__), "..", "configs", "config.yaml"), "r") as f:
+    config = yaml.safe_load(f)
+
+DATA_DIR = os.path.join(os.path.dirname(__file__), "..", config["data_dir"])
+INPUT_JSON = os.path.join(DATA_DIR, config["input"]["json"])
+NEX_FILE = os.path.join(DATA_DIR, config["input"]["nex"])
+SPECIES_FILE = os.path.join(DATA_DIR, config["input"]["species"])
+SHACL_FILE = os.path.join(DATA_DIR, config["input"]["shacl"])
 
 
 def test_inputs_exist():
