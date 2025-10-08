@@ -22,27 +22,20 @@ jobs:
       # 2. Set up Conda environment
       - name: Set up Conda
         run: |
-          # Install Miniconda if not present
           wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
           bash miniconda.sh -b -p $HOME/miniconda
           export PATH="$HOME/miniconda/bin:$PATH"
-
-          # Update conda
           conda update -y conda
-
-          # Create environment from your original environment.yml
           conda env create -f environment.yml -n tool2_env
-
-          # Debug: list environments
           conda info --envs
 
-      # 3. Install any missing packages
-      - name: Install packages
+      # 3. Install Python package
+      - name: Install Python package
         run: |
           export PATH="$HOME/miniconda/bin:$PATH"
           conda run -p $HOME/miniconda/envs/tool2_env pip install -e .
 
-      # 4. Run tests (pipeline stops here if tests fail)
+      # 4. Run tests
       - name: Run tests
         run: |
           export PATH="$HOME/miniconda/bin:$PATH"
@@ -53,18 +46,19 @@ jobs:
         id: semver
         shell: bash -l {0}
         run: |
+          export PATH="$HOME/miniconda/bin:$PATH"
           conda activate tool2_env
           VERSION=$(python -m semantic_release version --print)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # 6. Tag Git commit with new version
+      # 6. Tag Git commit with new version (authenticated)
       - name: Tag commit
         if: github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "v${{ steps.semver.outputs.version }}" -m "Release ${{ steps.semver.outputs.version }}"
-          git push origin "v${{ steps.semver.outputs.version }}"
+          git push "https://${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" --tags
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
