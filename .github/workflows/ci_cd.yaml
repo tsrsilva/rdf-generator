@@ -51,8 +51,10 @@ jobs:
       # 5. Determine next semantic version
       - name: Get next semantic version
         id: semver
+        shell: bash -l {0}
         run: |
-          VERSION=$(conda run -n tool2_env python -m semantic_release version --print)
+          conda activate tool2_env
+          VERSION=$(python -m semantic_release version --print)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       # 6. Tag Git commit with new version
