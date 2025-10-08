@@ -8,7 +8,7 @@ input:
   shacl: "shapes/phenotype_shapes.ttl"
 
 output:
-  base_dir: "/app/outputs"
+  base_dir: "outputs"
   ttl: "output_ttl"
   png: "output_png"
   validation: "validation_reports"

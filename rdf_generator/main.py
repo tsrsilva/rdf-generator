@@ -24,13 +24,18 @@ def load_config(config_path=os.path.join("configs", "config.yaml")):
 config = load_config()
 
 # BASE_DIR points to /app inside container
-BASE_DIR = "/app"
+BASE_DIR = os.getcwd()
 
 # DATA_DIR from config
 DATA_DIR = os.path.join(BASE_DIR, config["data_dir"])
 
 # OUTPUT_DIR from config
-OUTPUT_DIR = config["output"]["base_dir"]
+# OUTPUT_DIR = config["output"]["base_dir"]
+output_base = config["output"]["base_dir"]
+if os.path.isabs(output_base):
+    OUTPUT_DIR = output_base  # absolute paths stay as-is
+else:
+    OUTPUT_DIR = os.path.join(BASE_DIR, output_base)
 
 # Input files
 INPUT_JSON = os.path.join(DATA_DIR, config["input"]["json"])
