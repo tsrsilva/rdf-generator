@@ -3,6 +3,10 @@
 
 name: CI/CD Pipeline
 
+permissions:
+  contents: write
+  packages: write
+
 on:
   push:
     branches: [ main ]
