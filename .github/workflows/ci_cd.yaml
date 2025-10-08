@@ -38,11 +38,11 @@ jobs:
 
       # 3. Install any missing pip packages
       - name: Install pip dependencies
-        run: conda run -n tool2_env pip install --upgrade pip
+        run: conda run -p $HOME/miniconda/envs/tool2_env pip install --upgrade pip
 
       # 4. Run tests (pipeline stops here if tests fail)
       - name: Run tests
-        run: conda run -n tool2_env pytest tests/ --maxfail=1 --disable-warnings -v
+        run: conda run -p $HOME/miniconda/envs/tool2_env pytest tests/ --maxfail=1 --disable-warnings -v
 
       # 5. Determine next semantic version
       - name: Get next semantic version
