@@ -36,13 +36,17 @@ jobs:
           # Debug: list environments
           conda info --envs
 
-      # 3. Install any missing pip packages
-      - name: Install pip dependencies
-        run: conda run -p $HOME/miniconda/envs/tool2_env pip install --upgrade pip
+      # 3. Install any missing packages
+      - name: Install packages
+        run: |
+          export PATH="$HOME/miniconda/bin:$PATH"
+          conda run -p $HOME/miniconda/envs/tool2_env pip install -e .
 
       # 4. Run tests (pipeline stops here if tests fail)
       - name: Run tests
-        run: conda run -p $HOME/miniconda/envs/tool2_env pytest tests/ --maxfail=1 --disable-warnings -v
+        run: |
+          export PATH="$HOME/miniconda/bin:$PATH"
+          conda run -p $HOME/miniconda/envs/tool2_env pytest tests/ --maxfail=1 --disable-warnings -v
 
       # 5. Determine next semantic version
       - name: Get next semantic version
