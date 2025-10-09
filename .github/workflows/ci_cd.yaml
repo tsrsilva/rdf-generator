@@ -93,17 +93,32 @@ jobs:
         run: |
           docker compose -f docker-compose.yml run --rm rdf-generator --help
 
-      # 10. Push Docker image
+      # 10. Push Docker image (requires secrets: DOCKER_USERNAME, DOCKER_PASSWORD)
       - name: Push Docker image
         if: github.ref == 'refs/heads/main'
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          VERSION: ${{ steps.semver.outputs.version }}
         run: |
+          # Check that Docker credentials are available
+          if [ -z "$DOCKER_USERNAME" ] || [ -z "$DOCKER_PASSWORD" ]; then
+            echo "ERROR: Docker credentials not found in GitHub Secrets."
+            echo "Please add DOCKER_USERNAME and DOCKER_PASSWORD to your repository secrets."
+            echo "Skipping Docker push."
+            exit 1
+          fi
+
+          echo "Logging in to Docker Hub as $DOCKER_USERNAME..."
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          VERSION=${{ steps.semver.outputs.version }}
+
+          echo "Tagging and pushing Docker images (version: $VERSION)..."
           docker tag rdf-generator:$VERSION $DOCKER_USERNAME/rdf-generator:$VERSION
           docker tag rdf-generator:$VERSION $DOCKER_USERNAME/rdf-generator:latest
+
           docker push $DOCKER_USERNAME/rdf-generator:$VERSION
           docker push $DOCKER_USERNAME/rdf-generator:latest
+
+          echo "Docker images pushed successfully!"
+
 
