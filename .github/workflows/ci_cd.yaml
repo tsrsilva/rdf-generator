@@ -75,7 +75,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-
       # 7. Build Docker image
       - name: Build Docker image
         run: |
