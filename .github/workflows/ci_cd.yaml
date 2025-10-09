@@ -88,6 +88,22 @@ jobs:
           docker compose -f docker-compose.yml config
           docker compose -f docker-compose.yml build
 
+      # Debug: Check secret visibility (safe)
+      - name: Debug secret visibility (safe)
+        run: |
+          echo "Checking if Docker secrets are visible..."
+          if [ -z "${{ secrets.DOCKER_USERNAME }}" ]; then
+            echo "DOCKER_USERNAME is NOT visible"
+          else
+            echo "DOCKER_USERNAME is visible"
+          fi
+
+          if [ -z "${{ secrets.DOCKER_PASSWORD }}" ]; then
+            echo "DOCKER_PASSWORD is NOT visible"
+          else
+            echo "DOCKER_PASSWORD is visible"
+          fi
+
       # 9. Run container smoke test
       - name: Run container smoke test
         run: |
