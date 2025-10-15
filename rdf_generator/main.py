@@ -12,7 +12,13 @@ import dendropy
 from rdflib import Graph, Namespace, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL
 from pyshacl import validate
-from pygraphviz import AGraph
+# Visualization is optional; guard pygraphviz import
+try:
+    from pygraphviz import AGraph
+    HAVE_PYGRAPHVIZ = True
+except Exception:
+    AGraph = None  # type: ignore
+    HAVE_PYGRAPHVIZ = False
 
 # === CONFIGURATION ===
 # Load configuration from YAML file
@@ -745,25 +751,32 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
             _write_triple(f, s, p, o)
 
 def visualize_graph(classes, individuals, edges, output_file="graph.svg"):
-    g = AGraph(directed=True, strict=False, rankdir="LR")
-    g.node_attr.update(
-        shape="ellipse", style="filled", fillcolor="#d5f5e3",
-        margin="0.1,0.1", width="0.2", height="0.2",
-        nodesep="1.0", ranksep="2.0", splines="true"
-    )
-    for cls in classes:
-        g.add_node(cls, shape="box", fillcolor="#cce5ff")
-    for ind in individuals:
-        short_label = ind.split("#")[-1]
-        g.add_node(ind, label=short_label)
-    for src, dst, label in edges:
-        g.add_edge(src, dst, label=label)
-    if classes:
-        g.add_subgraph(classes, rank='same')
-    if individuals:
-        g.add_subgraph(individuals, rank='same')
-    g.layout(prog="fdp")
-    g.draw(output_file)
+    if not HAVE_PYGRAPHVIZ:
+        print("[SKIP] pygraphviz not available; skipping visualization for", output_file)
+        return
+
+    try:
+        g = AGraph(directed=True, strict=False, rankdir="LR")
+        g.node_attr.update(
+            shape="ellipse", style="filled", fillcolor="#d5f5e3",
+            margin="0.1,0.1", width="0.2", height="0.2",
+            nodesep="1.0", ranksep="2.0", splines="true"
+        )
+        for cls in classes:
+            g.add_node(cls, shape="box", fillcolor="#cce5ff")
+        for ind in individuals:
+            short_label = ind.split("#")[-1]
+            g.add_node(ind, label=short_label)
+        for src, dst, label in edges:
+            g.add_edge(src, dst, label=label)
+        if classes:
+            g.add_subgraph(classes, rank='same')
+        if individuals:
+            g.add_subgraph(individuals, rank='same')
+        g.layout(prog="fdp")
+        g.draw(output_file)
+    except Exception as e:
+        print(f"[SKIP] Graphviz rendering failed ({e}); skipping {output_file}")
 
 # ---------- High-level build steps ----------
 
@@ -944,6 +957,9 @@ def enrich_and_serialize_tu_graph(
     print(f"[OK] TTL written for {taxon_label} → {ttl_file}")
 
 def visualize_tu_graph(tu_graph: Graph, tu_uri: URIRef, output_dir: str, taxon_label: str) -> None:
+    if not HAVE_PYGRAPHVIZ:
+        print("[SKIP] pygraphviz not available; skipping TU visualization for", taxon_label)
+        return
     role_map = {}
     for s, p, o in tu_graph:
         if p == PHB.has_entity_component:
