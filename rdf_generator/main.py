@@ -22,10 +22,35 @@ except Exception:
     GRAPHVIZ_AVAILABLE = False
 
 # === CONFIGURATION ===
-# Load configuration from YAML file
-def load_config(config_path=os.path.join("configs", "config.yaml")):
-    with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+# Load configuration from YAML file with sensible container-aware fallbacks
+def load_config(config_path: Optional[str] = None):
+    """
+    Load configuration from a YAML file.
+
+    Resolution order when config_path is not provided:
+      1) $CONFIG_PATH environment variable
+      2) /app/config.yaml (Docker Compose mount)
+      3) configs/config.yaml (repo default)
+    """
+    candidate_paths: List[str] = []
+    if config_path:
+        candidate_paths.append(config_path)
+    env_path = os.getenv("CONFIG_PATH")
+    if env_path:
+        candidate_paths.append(env_path)
+    candidate_paths.extend([
+        "/app/config.yaml",
+        os.path.join("configs", "config.yaml"),
+    ])
+
+    for path in candidate_paths:
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    return yaml.safe_load(f)
+        except Exception:
+            continue
+    raise FileNotFoundError("No configuration file found. Set CONFIG_PATH or add configs/config.yaml")
 
 # I/O and environment setup moved into main() to avoid side effects on import
 
