@@ -62,8 +62,8 @@ with open(os.path.join(DIR_VALIDATION, "validation_summary.txt"), "w", encoding=
 # === NAMESPACES ===
 BFO = Namespace("http://purl.obolibrary.org/obo/BFO_")
 CDAO = Namespace("http://purl.obolibrary.org/obo/CDAO_")
-DC = Namespace("http://purl.org/dc/terms#")
-DWC = Namespace("http://rs.tdwg.org/dwc/terms#")
+DC = Namespace("http://purl.org/dc/terms/")
+DWC = Namespace("http://rs.tdwg.org/dwc/terms/")
 IAO = Namespace("http://purl.obolibrary.org/obo/IAO_")
 KB = Namespace("http://www.phenobees.org/kb#")
 OBO = Namespace("http://purl.obolibrary.org/obo#")
@@ -131,13 +131,13 @@ def build_base_graph() -> Graph:
     bind_namespaces(base)
 
     # minimal class declarations used across character graphs
-    base.add((UBERON.UBERON_0007023, RDF.type, OWL.Class))
-    base.add((UBERON.UBERON_0003100, RDF.type, OWL.Class))
-    base.add((UBERON.UBERON_0003101, RDF.type, OWL.Class))
+    base.add((UBERON["0007023"], RDF.type, OWL.Class))
+    base.add((UBERON["0003100"], RDF.type, OWL.Class))
+    base.add((UBERON["0003101"], RDF.type, OWL.Class))
 
-    base.add((UBERON.UBERON_0007023,RDFS.label, Literal("Adult Organism")))
-    base.add((UBERON.UBERON_0003100,RDFS.label, Literal("Female Organism")))
-    base.add((UBERON.UBERON_0003101,RDFS.label, Literal("Male Organism")))
+    base.add((UBERON["0007023"], RDFS.label, Literal("Adult Organism")))
+    base.add((UBERON["0003100"], RDFS.label, Literal("Female Organism")))
+    base.add((UBERON["0003101"], RDFS.label, Literal("Male Organism")))
 
     base.add((PHB.NeomorphicStatement, RDF.type, OWL.Class))
     base.add((PHB.TransformationalSimpleStatement, RDF.type, OWL.Class))
@@ -258,13 +258,15 @@ def handle_species(
     sp_uri = URIRef(sp_uri_str)
     sp_g.add((sp_uri, RDF.type, OWL.Class))
     sp_g.add((sp_uri, RDFS.label, Literal(sp_label)))
+    sp_g.add((sp_uri, RDF.type, TXR["0000006"]))  # the species is a TXR Species class
 
     # --- Species instance ---
     sp_uuid = uuid.uuid5(UUID_NAMESPACE, sp_label.strip().lower())
     sp_instance = URIRef(KB[f"sp-{sp_uuid}"])
-    sp_g.add((sp_instance, RDF.type, TXR["0000006"]))  # species individual
+
+    sp_g.add((sp_instance, RDF.type, sp_uri))  # species individual is an instance of the species class
     sp_g.add((sp_instance, RDFS.label, Literal(sp_label)))
-    sp_g.add((sp_instance, IAO["0000219"], sp_uri))  # denotes the concept
+    sp_g.add((sp_instance, RDF.type, OWL.NamedIndividual))
     
     # If we have an external ID (GBIF), link it
     if species_info.get("ID"):
@@ -326,26 +328,36 @@ def handle_character_type(
 
 def handle_organism(
         g: Graph,
-        org_data: Dict[str, Any]
-    ) -> URIRef:
+        org_data: Any,
+        char_id: Optional[str] = None
+    ) -> Optional[URIRef]:
     """
     Add RDF triples for the organism. Returns the organism instance URI.
+
+    If a char_id is provided, the organism instance UUID is derived from
+    (char_id + label), ensuring a distinct organism instance per Char_ID even
+    when the organism label is identical across rows.
     """
+
     org_label = org_data.get("Label", "Unknown organism")
     org_uri_str = org_data.get("URI") or str(KB[org_label.replace(" ", "_")])
     org_uri = URIRef(org_uri_str)
 
-    org_uuid = uuid.uuid5(UUID_NAMESPACE, f"{org_label.strip().lower()}")
-    instance_uri = URIRef(KB[f"org-{org_uuid}"])
+    # Salt UUID with Char_ID (when available) to create per-character instances
+    uuid_seed = (
+        f"{char_id}::{org_label.strip().lower()}" if char_id else org_label.strip().lower()
+    )
+    org_uuid = uuid.uuid5(UUID_NAMESPACE, uuid_seed)
+    org_instance = URIRef(KB[f"org-{org_uuid}"])
 
-    g.add((org_uri, RDFS.label, Literal(org_label)))
     g.add((org_uri, RDF.type, OWL.Class))
+    g.add((org_uri, RDFS.label, Literal(org_label)))
+    
+    g.add((org_instance, RDF.type, org_uri))
+    g.add((org_instance, RDFS.label, Literal(org_label)))
+    g.add((org_instance, RDF.type, OWL.NamedIndividual))
 
-    g.add((instance_uri, RDFS.label, Literal(org_label)))
-    g.add((instance_uri, RDF.type, org_uri))
-    g.add((instance_uri, RDF.type, OWL.NamedIndividual))
-
-    return instance_uri
+    return org_instance
 
 def handle_locator(
     g: Graph,
@@ -415,7 +427,12 @@ def handle_organism_and_locators(
         - list of locator instances in their chained order
     """
 
-    organism_instance = handle_organism(g, data.get("Organism") or {})
+    # Create a per-Char_ID organism instance (salt UUID with Char_ID)
+    organism_instance = handle_organism(
+        g,
+        data.get("Organism") or {},
+        char_id=data.get("Char_ID")
+    )
     previous_instance = organism_instance
     locators: List[URIRef] = []
 
@@ -438,14 +455,18 @@ def compute_default_organism_instance_uri_from_dataset(
         dataset: List[Dict[str, Any]]
     ) -> Optional[URIRef]:
     """
-    Compute the canonical organism instance URI deterministically from the dataset.
-    Uses the first row that has an Organism section. No triples are added here.
+    Compute a canonical organism instance URI deterministically from the dataset.
+    Uses the first row that has an Organism section and salts the UUID with that
+    row's Char_ID to match the per-character organism instances created elsewhere.
+    No triples are added here.
     """
     for row in dataset:
         org = row.get("Organism") or {}
         org_label = org.get("Label")
-        if org_label:
-            org_uuid = uuid.uuid5(UUID_NAMESPACE, f"{org_label.strip().lower()}")
+        char_id = row.get("Char_ID")
+        if org_label and char_id:
+            seed = f"{char_id}::{org_label.strip().lower()}"
+            org_uuid = uuid.uuid5(UUID_NAMESPACE, seed)
             return URIRef(KB[f"org-{org_uuid}"])
     return None
 
@@ -522,7 +543,10 @@ def handle_states(
 
     return state_map_for_char
 
-def process_phenotype(g: Graph, row: Dict[str, Any]) -> Tuple[URIRef, URIRef, Dict[int, str], Graph]:
+def process_phenotype(
+        g: Graph, 
+        row: Dict[str, Any]
+) -> Tuple[URIRef, URIRef, Dict[int, str], Graph]:
     """
     Construct a phenotype statement graph for a single dataset row.
 
@@ -543,7 +567,7 @@ def process_phenotype(g: Graph, row: Dict[str, Any]) -> Tuple[URIRef, URIRef, Di
           - state_map_for_char: Mapping of state indices to KB URIs.
           - sp_g: Species-specific RDFLib Graph (possibly empty).
     """
-    char_id = row.get("CharacterID") or str(uuid.uuid4())
+    char_id = row.get("Char_ID") or str(uuid.uuid4())
     char_label = row.get("CharacterLabel", f"Character {char_id}")
 
     # Character class definition
@@ -553,7 +577,7 @@ def process_phenotype(g: Graph, row: Dict[str, Any]) -> Tuple[URIRef, URIRef, Di
     g.add((char_uri, RDFS.label, Literal(char_label)))
 
     # Phenotype instance
-    pheno_uuid = uuid.uuid5(UUID_NAMESPACE, f"pheno_{char_id}")
+    pheno_uuid = uuid.uuid5(UUID_NAMESPACE, f"pheno-{char_id}")
     phenotype_instance = URIRef(KB[f"phe-{pheno_uuid}"])
     g.add((phenotype_instance, RDF.type, OWL.NamedIndividual))
     g.add((phenotype_instance, RDFS.label, Literal(f"Phenotype statement for {char_label}")))
@@ -585,7 +609,7 @@ def process_phenotype(g: Graph, row: Dict[str, Any]) -> Tuple[URIRef, URIRef, Di
         g.add((phenotype_instance, PHB.has_quality_component, URIRef(state_uri)))
 
         # === NEW: link Character → may_have_state → State ===
-        g.add((char_uri, CDAO.may_have_state, URIRef(state_uri)))
+        g.add((char_uri, PHB.may_have_state, URIRef(state_uri)))
         print(f"[DEBUG] {char_label} (ID {char_id}) may_have_state -> {state_uri}")
 
     # Species Graph
@@ -850,7 +874,7 @@ def build_cdao_matrix(
     for taxon in nexus_matrix.taxon_namespace:
         tu_uuid = uuid.uuid5(UUID_NAMESPACE, taxon.label)
         tu_uri = URIRef(KB[f"tu-{tu_uuid}"])
-        g.add((matrix_uri, CDAO["0000208"], tu_uri))  # has_TU
+        g.add((matrix_uri, CDAO["0000208"], tu_uri))  # CDAO has TU
 
     # Characters (columns) + phenotypes + species
     for char_index, char_id in enumerate(char_ids_in_order):
@@ -867,7 +891,7 @@ def build_cdao_matrix(
             g += sp_g
 
         # Link character into matrix
-        g.add((matrix_uri, CDAO.has_character, char_uri))
+        g.add((matrix_uri, CDAO["0000142"], char_uri)) # CDAO has character
 
         # Cells (taxon x character)
         for taxon in nexus_matrix.taxon_namespace:
@@ -880,8 +904,8 @@ def build_cdao_matrix(
             tu_uri = URIRef(KB[f"tu-{tu_uuid}"])
 
             g.add((cell_uri, RDF.type, CDAO["0000008"]))  # CDAO Cell
-            g.add((cell_uri, CDAO.belongs_to_TU, tu_uri))
-            g.add((cell_uri, CDAO.belongs_to_character, char_uri))
+            g.add((cell_uri, CDAO["0000191"], tu_uri)) # CDAO belongs to TU
+            g.add((cell_uri, CDAO["0000205"], char_uri)) # CDAO belongs to Character
 
             # Link Cell → Phenotype
             g.add((cell_uri, PHB.refers_to_phenotype_statement, phenotype_uri))
@@ -889,7 +913,7 @@ def build_cdao_matrix(
             # Link all states to the cell
             for state_uri_str in state_map.values():
                 state_node = URIRef(state_uri_str)
-                g.add((cell_uri, CDAO["0000184"], state_node))  # has_state
+                g.add((cell_uri, CDAO["0000184"], state_node))  # CDAO has_state
 
             # (state links per-taxon added later)
 
@@ -904,7 +928,7 @@ def enrich_and_serialize_tu_graph(
     species_info: Dict[str, Any],
     sp_uri: URIRef,
     sp_instance: URIRef,
-    instance_uri: URIRef,
+    org_instance: URIRef,
     dir_combined: str
 ) -> None:
     """
@@ -917,7 +941,7 @@ def enrich_and_serialize_tu_graph(
         species_info: Dictionary with species metadata.
         sp_uri: URIRef of species concept.
         sp_instance: URIRef of species instance.
-        instance_uri: Default organism instance URI.
+        org_instance: Default organism instance URI.
         dir_combined: Output directory for TTL serialization.
     """
     # Format valid label
@@ -930,13 +954,9 @@ def enrich_and_serialize_tu_graph(
     # TU assertions
     tu_graph.add((tu_uri, RDF.type, OWL.NamedIndividual))
     tu_graph.add((tu_uri, RDFS.label, Literal(valid_label_html)))
-    tu_graph.add((instance_uri, RO.has_role_in_modelling, tu_uri))
+    tu_graph.add((org_instance, RO["0003301"], tu_uri)) # RO has role in modelling
     tu_graph.add((tu_uri, RDF.type, CDAO["0000138"]))  # CDAO Taxon Unit
-    tu_graph.add((tu_uri, IAO["0000219"], sp_instance)) # denotes
-
-    # --- Connect TU to species concept as well ---
-    tu_graph.add((sp_instance, IAO["0000219"], sp_uri))        # sp_instance denotes species class
-    tu_graph.add((tu_uri, RO.denotes, sp_instance))                 # TU denotes species instance
+    tu_graph.add((tu_uri, IAO["0000219"], sp_instance)) # TU denotes species instance
     
     # Write TU graph to TTL
     ttl_file = os.path.join(dir_combined, f"tu_{taxon_label.replace(' ', '_')}.ttl")
@@ -1077,7 +1097,7 @@ def process_taxon(
     )
 
     # Compute a stable organism instance URI for this TU
-    instance_uri = compute_default_organism_instance_uri_from_dataset(dataset)  # uses global 'dataset'
+    org_instance = compute_default_organism_instance_uri_from_dataset(dataset)  # uses global 'dataset'
 
     # Enrich + serialize TTL
     enrich_and_serialize_tu_graph(
@@ -1087,7 +1107,7 @@ def process_taxon(
         species_info,
         sp_uri,
         sp_instance,
-        instance_uri,
+        org_instance,
         dir_combined
     )
 
