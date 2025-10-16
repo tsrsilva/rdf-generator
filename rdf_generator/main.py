@@ -326,16 +326,25 @@ def handle_character_type(
 
 def handle_organism(
         g: Graph,
-        org_data: Dict[str, Any]
+        org_data: Dict[str, Any],
+        char_id: Optional[str] = None
     ) -> URIRef:
     """
     Add RDF triples for the organism. Returns the organism instance URI.
+
+    If a char_id is provided, the organism instance UUID is derived from
+    (char_id + label), ensuring a distinct organism instance per Char_ID even
+    when the organism label is identical across rows.
     """
     org_label = org_data.get("Label", "Unknown organism")
     org_uri_str = org_data.get("URI") or str(KB[org_label.replace(" ", "_")])
     org_uri = URIRef(org_uri_str)
 
-    org_uuid = uuid.uuid5(UUID_NAMESPACE, f"{org_label.strip().lower()}")
+    # Salt UUID with Char_ID (when available) to create per-character instances
+    uuid_seed = (
+        f"{char_id}::{org_label.strip().lower()}" if char_id else org_label.strip().lower()
+    )
+    org_uuid = uuid.uuid5(UUID_NAMESPACE, uuid_seed)
     instance_uri = URIRef(KB[f"org-{org_uuid}"])
 
     g.add((org_uri, RDFS.label, Literal(org_label)))
@@ -414,8 +423,12 @@ def handle_organism_and_locators(
         - organism_instance (or None)
         - list of locator instances in their chained order
     """
-
-    organism_instance = handle_organism(g, data.get("Organism") or {})
+    # Create a per-Char_ID organism instance (salt UUID with Char_ID)
+    organism_instance = handle_organism(
+        g,
+        data.get("Organism") or {},
+        char_id=data.get("Char_ID")
+    )
     previous_instance = organism_instance
     locators: List[URIRef] = []
 
@@ -438,14 +451,18 @@ def compute_default_organism_instance_uri_from_dataset(
         dataset: List[Dict[str, Any]]
     ) -> Optional[URIRef]:
     """
-    Compute the canonical organism instance URI deterministically from the dataset.
-    Uses the first row that has an Organism section. No triples are added here.
+    Compute a canonical organism instance URI deterministically from the dataset.
+    Uses the first row that has an Organism section and salts the UUID with that
+    row's Char_ID to match the per-character organism instances created elsewhere.
+    No triples are added here.
     """
     for row in dataset:
         org = row.get("Organism") or {}
         org_label = org.get("Label")
-        if org_label:
-            org_uuid = uuid.uuid5(UUID_NAMESPACE, f"{org_label.strip().lower()}")
+        char_id = row.get("Char_ID") or row.get("CharacterID")
+        if org_label and char_id:
+            seed = f"{char_id}::{org_label.strip().lower()}"
+            org_uuid = uuid.uuid5(UUID_NAMESPACE, seed)
             return URIRef(KB[f"org-{org_uuid}"])
     return None
 
