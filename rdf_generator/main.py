@@ -6,13 +6,20 @@ import json
 import yaml
 import uuid
 import re
+from pathlib import Path
 from typing import Optional, Tuple, Dict, Any, List
 
 import dendropy
 from rdflib import Graph, Namespace, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL
 from pyshacl import validate
-from pygraphviz import AGraph
+
+# Optional Graphviz support (guarded)
+try:
+    from pygraphviz import AGraph  # type: ignore
+    GRAPHVIZ_AVAILABLE = True
+except Exception:
+    GRAPHVIZ_AVAILABLE = False
 
 # === CONFIGURATION ===
 # Load configuration from YAML file
@@ -20,50 +27,13 @@ def load_config(config_path=os.path.join("configs", "config.yaml")):
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
 
-# Load the YAML config
-config = load_config()
-
-# BASE_DIR points to /app inside container
-BASE_DIR = os.getcwd()
-
-# DATA_DIR from config
-DATA_DIR = os.path.join(BASE_DIR, config["data_dir"])
-
-# OUTPUT_DIR from config
-# OUTPUT_DIR = config["output"]["base_dir"]
-output_base = config["output"]["base_dir"]
-if os.path.isabs(output_base):
-    OUTPUT_DIR = output_base  # absolute paths stay as-is
-else:
-    OUTPUT_DIR = os.path.join(BASE_DIR, output_base)
-
-# Input files
-INPUT_JSON = os.path.join(DATA_DIR, config["input"]["json"])
-NEX_FILE = os.path.join(DATA_DIR, config["input"]["nex"])
-SPECIES_FILE = os.path.join(DATA_DIR, config["input"]["species"])
-SHACL_FILE = os.path.join(DATA_DIR, config["input"]["shacl"])
-
-# Output directories
-DIR_OUTPUT_TTL = os.path.join(OUTPUT_DIR, config["output"]["ttl"])
-DIR_OUTPUT_PNG = os.path.join(OUTPUT_DIR, config["output"]["png"])
-DIR_VALIDATION = os.path.join(OUTPUT_DIR, config["output"]["validation"])
-DIR_COMBINED = os.path.join(OUTPUT_DIR, config["output"]["combined"])
-DIR_GRAPHVIZ = os.path.join(OUTPUT_DIR, config["output"]["graphviz"])
-
-# === SETUP ===
-# Create output dirs if they don’t exist
-for d in [DIR_OUTPUT_TTL, DIR_OUTPUT_PNG, DIR_VALIDATION, DIR_COMBINED, DIR_GRAPHVIZ]:
-    os.makedirs(d, exist_ok=True)
-
-# Reset summary each run
-with open(os.path.join(DIR_VALIDATION, "validation_summary.txt"), "w", encoding="utf-8") as f:
-    f.write("")
+# I/O and environment setup moved into main() to avoid side effects on import
 
 # === NAMESPACES ===
 BFO = Namespace("http://purl.obolibrary.org/obo/BFO_")
 CDAO = Namespace("http://purl.obolibrary.org/obo/CDAO_")
-DC = Namespace("http://purl.org/dc/terms#")
-DWC = Namespace("http://rs.tdwg.org/dwc/terms#")
+DC = Namespace("http://purl.org/dc/terms/")
+DWC = Namespace("http://rs.tdwg.org/dwc/terms/")
 IAO = Namespace("http://purl.obolibrary.org/obo/IAO_")
 KB = Namespace("http://www.phenobees.org/kb#")
 OBO = Namespace("http://purl.obolibrary.org/obo#")
@@ -73,10 +43,6 @@ RO = Namespace("http://purl.obolibrary.org/obo/RO_")
 TXR = Namespace("http://purl.obolibrary.org/obo/TAXRANK_")
 UBERON = Namespace("http://purl.obolibrary.org/obo/UBERON_")
 UUID_NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
-
-# === GLOBAL MAPS ===
-CHAR_STATE_MAPPING: Dict[str, Dict[int, str]] = {}   # Char_ID -> {state_index -> state_uri_str}
-CHAR_URI_BY_ID: Dict[str, URIRef] = {}               # Char_ID -> character URI
 
 # === HELPERS ===
 
@@ -142,71 +108,79 @@ def build_base_graph() -> Graph:
     base.add((PHB.NeomorphicStatement, RDF.type, OWL.Class))
     base.add((PHB.TransformationalSimpleStatement, RDF.type, OWL.Class))
     base.add((PHB.TransformationalComplexStatement, RDF.type, OWL.Class))
+    base.add((PHB.Species, RDF.type, OWL.Class))
 
     base.add((PHB.NeomorphicStatement, RDFS.label, Literal("Neomorphic Statement")))
     base.add((PHB.TransformationalSimpleStatement, RDFS.label, Literal("Transformational Simple Statement")))
     base.add((PHB.TransformationalComplexStatement, RDFS.label, Literal("Transformational Complex Statement")))
+    base.add((PHB.Species, RDFS.label, Literal("Species")))
+
+    # Declare PHB object properties used in the pipeline
+    phb_object_properties = [
+        (PHB.has_organismal_component, "has organismal component"),
+        (PHB.has_entity_component, "has entity component"),
+        (PHB.has_variable_component, "has variable component"),
+        (PHB.has_quality_component, "has quality component"),
+        (PHB.may_have_state, "may have state"),
+        (PHB.has_character, "has character"),
+        (PHB.refers_to_phenotype_statement, "refers to phenotype statement"),
+        (PHB.has_role_in_modelling, "has role in modelling"),
+        (PHB.belongs_to_TU, "belongs to TU"),
+        (PHB.belongs_to_character, "belongs to character"),
+    ]
+    for prop, label in phb_object_properties:
+        base.add((prop, RDF.type, OWL.ObjectProperty))
+        base.add((prop, RDFS.label, Literal(label)))
     
     return base
 
-# ---------- Load inputs (data, matrix, shapes) ----------
+"""All file/dataset loading is performed inside main()."""
 
-print("\n=== Loading characters ===")
-with open(INPUT_JSON, "r", encoding="utf-8") as f:
-    raw = json.load(f)
-    dataset: List[Dict[str, Any]] = raw if isinstance(raw, list) else [raw]
+# ---------- Normalization helpers ----------
 
-# --- Normalize locators so each is a dict ---
-for row in dataset:
-    locators = row.get("Locators", [])
-    normalized_locators = []
-    for loc in locators:
-        if isinstance(loc, dict):
-            normalized_locators.append(loc)
-        elif isinstance(loc, str):
-            normalized_locators.append({"label": loc.split("/")[-1], "uri": loc})
-        elif isinstance(loc, URIRef):
-            normalized_locators.append({"label": str(loc).split("/")[-1], "uri": str(loc)})
-        else:
-            print(f"[WARN] Unexpected locator type {type(loc)} in row {row.get('Char_ID')}")
-    row["Locators"] = normalized_locators
+def resolve_char_id(row: Dict[str, Any]) -> str:
+    """Return a canonical character ID regardless of source field name."""
+    return str(
+        row.get("Char_ID")
+        or row.get("CharacterID")
+        or row.get("Character_ID")
+        or row.get("ID")
+        or uuid.uuid4()
+    )
 
-    # Also recursively check if nested fields like Variable have locators
-    var = row.get("Variable")
-    if var and "Locators" in var:
-        nested_locators = var["Locators"]
-        normalized_nested = []
-        for loc in nested_locators:
+def resolve_char_label(row: Dict[str, Any], char_id: Optional[str] = None) -> str:
+    label = (
+        row.get("CharacterLabel")
+        or row.get("Character Label")
+        or row.get("Label")
+    )
+    if label:
+        return str(label)
+    if char_id is None:
+        char_id = resolve_char_id(row)
+    return f"Character {char_id}"
+
+def build_char_uri_from_id(char_id: str) -> URIRef:
+    char_uuid = uuid.uuid5(UUID_NAMESPACE, f"char_{char_id}")
+    return URIRef(KB[f"char-{char_uuid}"])
+
+def normalize_locators_in_row(row: Dict[str, Any]) -> None:
+    def normalize_list(locs: Any) -> List[Dict[str, str]]:
+        normalized: List[Dict[str, str]] = []
+        for loc in (locs or []):
             if isinstance(loc, dict):
-                normalized_nested.append(loc)
-            elif isinstance(loc, str):
-                normalized_nested.append({"label": loc.split("/")[-1], "uri": loc})
-            elif isinstance(loc, URIRef):
-                normalized_nested.append({"label": str(loc).split("/")[-1], "uri": str(loc)})
-        var["Locators"] = normalized_nested
+                normalized.append(loc)
+            elif isinstance(loc, (str, URIRef)):
+                s = str(loc)
+                normalized.append({"label": s.split("/")[-1], "uri": s})
+            else:
+                print(f"[WARN] Unexpected locator type {type(loc)} in row {row.get('Char_ID')}")
+        return normalized
 
-print("\n=== Loading species names ===")
-with open(SPECIES_FILE, "r", encoding="utf-8") as f:
-    species_list = json.load(f)
-    species_data: Dict[str, Dict[str, Any]] = {s["input_species_name"]: s for s in species_list}
-
-print("\n=== Loading NEXUS Matrix ===")
-nexus_dataset = dendropy.DataSet.get(path=NEX_FILE, schema="nexus")
-char_matrix = nexus_dataset.char_matrices[0]  # DendroPy CharacterMatrix
-
-print("\n=== Loading SHACL Shapes ===")
-shapes_graph = Graph()
-bind_namespaces(shapes_graph)
-shapes_graph.parse(SHACL_FILE, format="turtle")
-
-# Build a normalized label -> URI lookup to assist negation/complements
-state_label_to_uri: Dict[str, str] = {}
-for entry in dataset:
-    for s in entry.get("States", []):
-        lab = next((v for k, v in s.items() if 'label' in k.lower()), "").strip().lower()
-        u = next((v for k, v in s.items() if 'uri' in k.lower() and v), None)
-        if lab and u and lab not in state_label_to_uri:
-            state_label_to_uri[lab] = u
+    row["Locators"] = normalize_list(row.get("Locators", []))
+    var = row.get("Variable")
+    if var and isinstance(var, dict) and "Locators" in var:
+        var["Locators"] = normalize_list(var.get("Locators", []))
 
 # ---------- Species processing helper ----------
 def handle_species(
@@ -298,31 +272,6 @@ def serialize_species_graph(
 
 
 # ---------- Character-building helpers ----------
-
-def handle_character_type(
-        g: Graph,
-        character: URIRef,
-        data: Dict[str, Any]
-    ) -> None:
-    """
-    Add RDF triples for the character type based on the presence of 'Variable'.
-    Defensive against missing or None variable sections.
-    """
-    variable_data = data.get("Variable")
-    if not variable_data:
-        g.add((character, RDF.type, PHB.NeomorphicStatement))
-        g.add((character, RDF.type, OWL.NamedIndividual))
-        print(f"[Neomorphic] Char_ID: {data['Char_ID']}")
-        return
-
-    if variable_data.get("Variable comment"):
-        g.add((character, RDF.type, PHB.TransformationalComplexStatement))
-        g.add((character, RDF.type, OWL.NamedIndividual))
-        print(f"[Transformational Complex] Char_ID: {data['Char_ID']}")
-    else:
-        g.add((character, RDF.type, PHB.TransformationalSimpleStatement))
-        g.add((character, RDF.type, OWL.NamedIndividual))
-        print(f"[Transformational Simple] Char_ID: {data['Char_ID']}")
 
 def handle_organism(
         g: Graph,
@@ -501,15 +450,16 @@ def handle_states(
             base_label = label[4:].strip()
             label = f"not {base_label}"
 
-        # UUID for state
-        state_uuid = uuid.uuid5(UUID_NAMESPACE, f"{data['Char_ID']}_{uri or label.lower()}")
+        # UUID for state, derived from canonical char_id
+        char_id = resolve_char_id(data)
+        state_uuid = uuid.uuid5(UUID_NAMESPACE, f"{char_id}_{uri or label.lower()}")
         state_node = URIRef(KB[f"sta-{state_uuid}"])
 
         g.add((state_node, RDF.type, CDAO["0000045"]))  # CDAO State
 
         # Link to final_component from variable ---
         if final_component:
-            g.add((final_component, PHB.has_characteristic, state_node))
+            g.add((final_component, PHB.has_quality_component, state_node))
 
         # Type assignment
         g.add((state_node, RDFS.label, Literal(label)))
@@ -543,12 +493,11 @@ def process_phenotype(g: Graph, row: Dict[str, Any]) -> Tuple[URIRef, URIRef, Di
           - state_map_for_char: Mapping of state indices to KB URIs.
           - sp_g: Species-specific RDFLib Graph (possibly empty).
     """
-    char_id = row.get("CharacterID") or str(uuid.uuid4())
-    char_label = row.get("CharacterLabel", f"Character {char_id}")
+    char_id = resolve_char_id(row)
+    char_label = resolve_char_label(row, char_id)
 
     # Character class definition
-    char_uuid = uuid.uuid5(UUID_NAMESPACE, f"char_{char_id}")
-    char_uri = URIRef(KB[f"char-{char_uuid}"])
+    char_uri = build_char_uri_from_id(char_id)
     g.add((char_uri, RDF.type, CDAO["0000075"]))  # CDAO Character
     g.add((char_uri, RDFS.label, Literal(char_label)))
 
@@ -584,8 +533,8 @@ def process_phenotype(g: Graph, row: Dict[str, Any]) -> Tuple[URIRef, URIRef, Di
     for idx, state_uri in state_map_for_char.items():
         g.add((phenotype_instance, PHB.has_quality_component, URIRef(state_uri)))
 
-        # === NEW: link Character → may_have_state → State ===
-        g.add((char_uri, CDAO.may_have_state, URIRef(state_uri)))
+        # Link Character → PHB:may_have_state → State
+        g.add((char_uri, PHB.may_have_state, URIRef(state_uri)))
         print(f"[DEBUG] {char_label} (ID {char_id}) may_have_state -> {state_uri}")
 
     # Species Graph
@@ -745,6 +694,9 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
             _write_triple(f, s, p, o)
 
 def visualize_graph(classes, individuals, edges, output_file="graph.svg"):
+    if not globals().get('GRAPHVIZ_AVAILABLE', False):
+        print(f"[SKIP] Graphviz not available; skipping graph rendering to {output_file}")
+        return
     g = AGraph(directed=True, strict=False, rankdir="LR")
     g.node_attr.update(
         shape="ellipse", style="filled", fillcolor="#d5f5e3",
@@ -784,7 +736,7 @@ def build_character_graphs(
     char_ids_in_order: List[str] = []
 
     for row in dataset:
-        char_id = row["Char_ID"]
+        char_id = resolve_char_id(row)
         char_ids_in_order.append(char_id)
 
         g_char = Graph()
@@ -855,7 +807,7 @@ def build_cdao_matrix(
     # Characters (columns) + phenotypes + species
     for char_index, char_id in enumerate(char_ids_in_order):
         # Pull row from dataset
-        char_data = next((row for row in dataset if row["Char_ID"] == char_id), None)
+        char_data = next((row for row in dataset if resolve_char_id(row) == char_id), None)
         if not char_data:
             continue  # skip if no matching row
 
@@ -866,8 +818,8 @@ def build_cdao_matrix(
         if sp_g:
             g += sp_g
 
-        # Link character into matrix
-        g.add((matrix_uri, CDAO.has_character, char_uri))
+        # Link character into matrix (use PHB predicate for consistency)
+        g.add((matrix_uri, PHB.has_character, char_uri))
 
         # Cells (taxon x character)
         for taxon in nexus_matrix.taxon_namespace:
@@ -880,8 +832,8 @@ def build_cdao_matrix(
             tu_uri = URIRef(KB[f"tu-{tu_uuid}"])
 
             g.add((cell_uri, RDF.type, CDAO["0000008"]))  # CDAO Cell
-            g.add((cell_uri, CDAO.belongs_to_TU, tu_uri))
-            g.add((cell_uri, CDAO.belongs_to_character, char_uri))
+            g.add((cell_uri, PHB.belongs_to_TU, tu_uri))
+            g.add((cell_uri, PHB.belongs_to_character, char_uri))
 
             # Link Cell → Phenotype
             g.add((cell_uri, PHB.refers_to_phenotype_statement, phenotype_uri))
@@ -925,18 +877,18 @@ def enrich_and_serialize_tu_graph(
     parts = valid_label.split(" ", 2)
     binomial = f"{parts[0]} {parts[1]}" if len(parts) >= 2 else valid_label
     author = parts[2] if len(parts) == 3 else ""
-    valid_label_html = f"<i>{binomial}</i> {author}".strip()
+    valid_label_html = f"{binomial} {author}".strip()
 
     # TU assertions
     tu_graph.add((tu_uri, RDF.type, OWL.NamedIndividual))
     tu_graph.add((tu_uri, RDFS.label, Literal(valid_label_html)))
-    tu_graph.add((instance_uri, RO.has_role_in_modelling, tu_uri))
+    tu_graph.add((instance_uri, PHB.has_role_in_modelling, tu_uri))
     tu_graph.add((tu_uri, RDF.type, CDAO["0000138"]))  # CDAO Taxon Unit
     tu_graph.add((tu_uri, IAO["0000219"], sp_instance)) # denotes
 
     # --- Connect TU to species concept as well ---
     tu_graph.add((sp_instance, IAO["0000219"], sp_uri))        # sp_instance denotes species class
-    tu_graph.add((tu_uri, RO.denotes, sp_instance))                 # TU denotes species instance
+    tu_graph.add((tu_uri, IAO["0000219"], sp_instance))        # TU denotes species instance
     
     # Write TU graph to TTL
     ttl_file = os.path.join(dir_combined, f"tu_{taxon_label.replace(' ', '_')}.ttl")
@@ -982,6 +934,8 @@ def process_taxon(
     sp_g: Graph,
     species_data: Dict[str, Dict[str, Any]],
     matrix_graph: Graph,
+    char_matrix,
+    dataset: List[Dict[str, Any]],
     character_graphs: Dict[str, Graph],
     char_state_mapping: Dict[str, Dict[int, str]],
     char_ids_in_order: List[str],
@@ -1060,7 +1014,7 @@ def process_taxon(
         # Link character to the resolved state node
         state_uri_str = char_state_mapping.get(char_id, {}).get(state_index)
         if state_uri_str and g_char:
-            char_uri = URIRef(KB[f"char-{uuid.uuid5(UUID_NAMESPACE, str(char_id))}"])
+            char_uri = build_char_uri_from_id(str(char_id))
             tu_graph.add((char_uri, PHB.may_have_state, URIRef(state_uri_str)))
             print(f"[TU mapping] {taxon_label} -> Char {char_id}, StateIndex {state_index}")
 
@@ -1077,7 +1031,7 @@ def process_taxon(
     )
 
     # Compute a stable organism instance URI for this TU
-    instance_uri = compute_default_organism_instance_uri_from_dataset(dataset)  # uses global 'dataset'
+    instance_uri = compute_default_organism_instance_uri_from_dataset(dataset)
 
     # Enrich + serialize TTL
     enrich_and_serialize_tu_graph(
@@ -1099,6 +1053,68 @@ def process_taxon(
 # ---------- MAIN Orchestration (single shared pipeline) ----------
 
 def main():
+    print("\n=== Setup and configuration ===")
+    config = load_config()
+
+    # Determine repository base dir relative to this file
+    base_dir = Path(__file__).resolve().parents[1]
+
+    # Resolve paths from config
+    data_dir = (
+        config["data_dir"] if os.path.isabs(config["data_dir"]) else str(base_dir / config["data_dir"]) 
+    )
+    output_base = config["output"]["base_dir"]
+    output_dir = output_base if os.path.isabs(output_base) else str(base_dir / output_base)
+
+    input_json = os.path.join(data_dir, config["input"]["json"])
+    nex_file = os.path.join(data_dir, config["input"]["nex"])
+    species_file = os.path.join(data_dir, config["input"]["species"])
+    shacl_file = os.path.join(data_dir, config["input"]["shacl"])
+
+    # Output directories
+    dir_output_ttl = os.path.join(output_dir, config["output"]["ttl"])
+    dir_output_png = os.path.join(output_dir, config["output"]["png"])
+    dir_validation = os.path.join(output_dir, config["output"]["validation"])
+    dir_combined = os.path.join(output_dir, config["output"]["combined"])
+    dir_graphviz = os.path.join(output_dir, config["output"]["graphviz"])
+
+    # Allow tests or callers to override directories via module globals
+    dir_output_ttl = globals().get("DIR_OUTPUT_TTL", dir_output_ttl)
+    dir_output_png = globals().get("DIR_OUTPUT_PNG", dir_output_png)
+    dir_validation = globals().get("DIR_VALIDATION", dir_validation)
+    dir_combined = globals().get("DIR_COMBINED", dir_combined)
+    dir_graphviz = globals().get("DIR_GRAPHVIZ", dir_graphviz)
+
+    for d in [dir_output_ttl, dir_output_png, dir_validation, dir_combined, dir_graphviz]:
+        os.makedirs(d, exist_ok=True)
+
+    # Reset validation summary each run
+    with open(os.path.join(dir_validation, "validation_summary.txt"), "w", encoding="utf-8") as f:
+        f.write("")
+
+    print("\n=== Loading characters ===")
+    with open(input_json, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+        dataset: List[Dict[str, Any]] = raw if isinstance(raw, list) else [raw]
+
+    # Normalize dataset
+    for row in dataset:
+        normalize_locators_in_row(row)
+
+    print("\n=== Loading species names ===")
+    with open(species_file, "r", encoding="utf-8") as f:
+        species_list = json.load(f)
+        species_data: Dict[str, Dict[str, Any]] = {s["input_species_name"]: s for s in species_list}
+
+    print("\n=== Loading NEXUS Matrix ===")
+    nexus_dataset = dendropy.DataSet.get(path=nex_file, schema="nexus")
+    char_matrix = nexus_dataset.char_matrices[0]
+
+    print("\n=== Loading SHACL Shapes ===")
+    shapes_graph = Graph()
+    bind_namespaces(shapes_graph)
+    shapes_graph.parse(shacl_file, format="turtle")
+
     print("\n=== Building base graph and character graphs ===")
     base_graph = build_base_graph()
 
@@ -1116,7 +1132,7 @@ def main():
         base_graph=base_graph,
         shapes=shapes_graph,
         combined_report_graph=combined_report_graph,
-        validation_dir=DIR_VALIDATION
+        validation_dir=dir_validation
     )
 
     print("\n=== Building CDAO matrix graph (shared pipeline) ===")
@@ -1127,32 +1143,34 @@ def main():
     )
 
     print("\n=== Processing each taxon (TU graphs) ===")
-    tu_graphs = []  # collect all TU graphs
+    tu_graphs: List[Graph] = []
     for taxon in char_matrix.taxon_namespace:
         g_tu = process_taxon(
             taxon=taxon,
-            sp_g=sp_g,  # <<<<< pass the shared accumulator
+            sp_g=sp_g,
             species_data=species_data,
             matrix_graph=matrix_graph,
+            char_matrix=char_matrix,
+            dataset=dataset,
             character_graphs=character_graphs,
             char_state_mapping=char_state_mapping,
             char_ids_in_order=char_ids_in_order,
             shapes=shapes_graph,
             combined_report_graph=combined_report_graph,
-            validation_dir=DIR_VALIDATION,
-            dir_combined=DIR_COMBINED,
-            dir_graphviz=DIR_GRAPHVIZ
+            validation_dir=dir_validation,
+            dir_combined=dir_combined,
+            dir_graphviz=dir_graphviz
         )
         tu_graphs.append(g_tu)
 
     # Write individual components (optional)
-    matrix_ttl = os.path.join(DIR_COMBINED, "matrix.ttl")
+    matrix_ttl = os.path.join(dir_combined, "matrix.ttl")
     write_ttl_with_sections(matrix_graph, matrix_ttl)
 
-    chars_ttl = os.path.join(DIR_COMBINED, "characters_combined.ttl")
+    chars_ttl = os.path.join(dir_combined, "characters_combined.ttl")
     write_ttl_with_sections(combined_char_graph, chars_ttl)
 
-    species_ttl = os.path.join(DIR_COMBINED, "species_combined.ttl")
+    species_ttl = os.path.join(dir_combined, "species_combined.ttl")
     write_ttl_with_sections(sp_g, species_ttl)
 
     # === Merge everything into one combined TTL ===
@@ -1172,7 +1190,7 @@ def main():
         for t in g_tu:
             final_graph.add(t)
 
-    merged_ttl = os.path.join(DIR_COMBINED, "all_combined.ttl")
+    merged_ttl = os.path.join(dir_combined, "all_combined.ttl")
     write_ttl_with_sections(final_graph, merged_ttl)
     print(f"[OK] Full combined TTL → {merged_ttl}")
 
