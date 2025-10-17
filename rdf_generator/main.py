@@ -472,15 +472,14 @@ def compute_default_organism_instance_uri_from_dataset(
 
 def handle_variable_component(
     g: Graph,
-    data: Dict[str, Any],
-    final_component: Optional[URIRef] = None
+    data: Dict[str, Any]
 ) -> Optional[URIRef]:
     """
     Add RDF triples for the 'Variable' section. Returns the variable instance URIRef or None.
     """
     var_data = data.get("Variable")
     if not var_data:
-        return final_component
+        return None
 
     var_label = var_data.get("Variable label", "Unnamed Variable")
     var_uuid = uuid.uuid5(UUID_NAMESPACE, f"{var_data.get('Variable URI', var_label.strip().lower())}")
@@ -502,8 +501,7 @@ def handle_variable_component(
 def handle_states(
     g: Graph,
     # char_uri: URIRef,
-    data: Dict[str, Any],
-    final_component: Optional[URIRef] = None
+    data: Dict[str, Any]
 ) -> Dict[int, str]:
     """
     Add RDF triples for 'States'. Returns a map of index -> state node URI (str).
@@ -528,9 +526,7 @@ def handle_states(
 
         g.add((state_node, RDF.type, CDAO["0000045"]))  # CDAO State
 
-        # Link to final_component from variable ---
-        if final_component:
-            g.add((final_component, PHB.has_characteristic, state_node))
+        # Do not link to a phenotype here; per-cell phenotypes will link exactly one state
 
         # Type assignment
         g.add((state_node, RDFS.label, Literal(label)))
@@ -598,13 +594,13 @@ def process_phenotype(
     for locator in locator_instances:
         g.add((phenotype_instance, PHB.has_entity_component, locator))
 
-    # Variable Component
-    variable_instance = handle_variable_component(g, row, final_component=phenotype_instance)
+    # Variable Component (no attachment to phenotype here; per-cell will attach)
+    variable_instance = handle_variable_component(g, row)
     if variable_instance:
         g.add((phenotype_instance, PHB.has_variable_component, variable_instance))
 
     # States: build state nodes and register allowed states per Character
-    state_map_for_char = handle_states(g, row, final_component=phenotype_instance)
+    state_map_for_char = handle_states(g, row)
     # Catalog allowed states at the Character level only (do NOT attach to phenotype here)
     for idx, state_uri in state_map_for_char.items():
         g.add((char_uri, PHB.may_have_state, URIRef(state_uri)))
@@ -959,6 +955,8 @@ def build_cdao_matrix(
             # Link exactly one state (if resolvable) to the cell phenotype instance
             if chosen_state_node is not None:
                 g.add((per_pheno_uri, PHB.has_quality_component, chosen_state_node))
+                # Also assert has_characteristic from per-cell phenotype to the specific state
+                g.add((per_pheno_uri, PHB.has_characteristic, chosen_state_node))
                 g.add((cell_uri, CDAO["0000184"], chosen_state_node))  # Cell has_state
 
             # Link Cell → Phenotype (to the per-cell instance)
