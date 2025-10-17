@@ -954,9 +954,17 @@ def build_cdao_matrix(
 
             # Link exactly one state (if resolvable) to the cell phenotype instance
             if chosen_state_node is not None:
+                # Phenotype has this quality/state (single)
                 g.add((per_pheno_uri, PHB.has_quality_component, chosen_state_node))
-                # Also assert has_characteristic from per-cell phenotype to the specific state
-                g.add((per_pheno_uri, PHB.has_characteristic, chosen_state_node))
+
+                # Connect either Variable (preferred) or last Locator to the state via has_characteristic
+                if var_instance is not None:
+                    g.add((var_instance, PHB.has_characteristic, chosen_state_node))
+                elif locator_instances:
+                    last_locator = locator_instances[-1]
+                    g.add((last_locator, PHB.has_characteristic, chosen_state_node))
+
+                # Cell also points to the state
                 g.add((cell_uri, CDAO["0000184"], chosen_state_node))  # Cell has_state
 
             # Link Cell → Phenotype (to the per-cell instance)
