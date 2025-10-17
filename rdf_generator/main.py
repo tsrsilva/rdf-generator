@@ -603,12 +603,10 @@ def process_phenotype(
     if variable_instance:
         g.add((phenotype_instance, PHB.has_variable_component, variable_instance))
 
-    # States / qualities
+    # States: build state nodes and register allowed states per Character
     state_map_for_char = handle_states(g, row, final_component=phenotype_instance)
+    # Catalog allowed states at the Character level only (do NOT attach to phenotype here)
     for idx, state_uri in state_map_for_char.items():
-        g.add((phenotype_instance, PHB.has_quality_component, URIRef(state_uri)))
-
-        # === NEW: link Character → may_have_state → State ===
         g.add((char_uri, PHB.may_have_state, URIRef(state_uri)))
         print(f"[DEBUG] {char_label} (ID {char_id}) may_have_state -> {state_uri}")
 
@@ -846,7 +844,8 @@ def build_character_graphs(
 def build_cdao_matrix(
     nexus_matrix,
     dataset,
-    char_ids_in_order: List[str]
+    char_ids_in_order: List[str],
+    char_state_mapping: Dict[str, Dict[int, str]]
 ) -> Tuple[Graph, URIRef]:
     """
     Build a CDAO matrix graph linking TUs, Characters, Cells, and Phenotypes.
@@ -876,14 +875,14 @@ def build_cdao_matrix(
         tu_uri = URIRef(KB[f"tu-{tu_uuid}"])
         g.add((matrix_uri, CDAO["0000208"], tu_uri))  # CDAO has TU
 
-    # Characters (columns) + phenotypes + species
+    # Characters (columns) + phenotype templates + species
     for char_index, char_id in enumerate(char_ids_in_order):
         # Pull row from dataset
         char_data = next((row for row in dataset if row["Char_ID"] == char_id), None)
         if not char_data:
             continue  # skip if no matching row
 
-        # Process phenotype
+        # Process phenotype template (character-level; no state attachment here)
         char_uri, phenotype_uri, state_map, sp_g = process_phenotype(g, char_data)
 
         # Merge species triples
@@ -907,15 +906,63 @@ def build_cdao_matrix(
             g.add((cell_uri, CDAO["0000191"], tu_uri)) # CDAO belongs to TU
             g.add((cell_uri, CDAO["0000205"], char_uri)) # CDAO belongs to Character
 
-            # Link Cell → Phenotype
-            g.add((cell_uri, PHB.refers_to_phenotype_statement, phenotype_uri))
+            # Resolve the state for this specific cell
+            cell_value = nexus_matrix[taxon][char_index]
+            state_symbol = str(cell_value).strip() if cell_value is not None else ""
 
-            # Link all states to the cell
-            for state_uri_str in state_map.values():
-                state_node = URIRef(state_uri_str)
-                g.add((cell_uri, CDAO["0000184"], state_node))  # CDAO has_state
+            chosen_state_node: Optional[URIRef] = None
+            if state_symbol == '?':
+                # Unknown state node (stable per character)
+                unknown_uuid = uuid.uuid5(UUID_NAMESPACE, f"{char_id}_unknown")
+                unknown_node = URIRef(KB[f"unknown_state_{unknown_uuid}"])
+                g.add((unknown_node, RDFS.label, Literal("unknown")))
+                g.add((unknown_node, RDF.type, OWL.NamedIndividual))
+                chosen_state_node = unknown_node
+            elif state_symbol and state_symbol != '-':
+                try:
+                    state_index = int(state_symbol)
+                    state_uri_str = char_state_mapping.get(char_id, {}).get(state_index)
+                    if state_uri_str:
+                        chosen_state_node = URIRef(state_uri_str)
+                except ValueError:
+                    pass  # unsupported polymorphic or non-integer state symbol
 
-            # (state links per-taxon added later)
+            # Create and link a per-cell phenotype statement that points to exactly one state
+            per_pheno_seed = f"pheno-{char_id}::{str(taxon.label).strip().lower()}"
+            per_pheno_uuid = uuid.uuid5(UUID_NAMESPACE, per_pheno_seed)
+            per_pheno_uri = URIRef(KB[f"phe-{per_pheno_uuid}"])
+
+            # Minimal typing/label for the cell-specific phenotype
+            g.add((per_pheno_uri, RDF.type, OWL.NamedIndividual))
+            g.add((per_pheno_uri, RDFS.label, Literal(f"Phenotype statement for {char_data.get('CharacterLabel', char_id)} in {taxon.label}")))
+
+            # Assign statement class based on Variable section
+            variable_data = char_data.get("Variable")
+            if not variable_data:
+                g.add((per_pheno_uri, RDF.type, PHB.NeomorphicStatement))
+            elif variable_data.get("Variable comment"):
+                g.add((per_pheno_uri, RDF.type, PHB.TransformationalComplexStatement))
+            else:
+                g.add((per_pheno_uri, RDF.type, PHB.TransformationalSimpleStatement))
+
+            # Attach the same organism/locator/variable components used by the character-level template
+            org_instance, locator_instances = handle_organism_and_locators(g, char_data)
+            if org_instance:
+                g.add((per_pheno_uri, PHB.has_organismal_component, org_instance))
+            for locator in locator_instances:
+                g.add((per_pheno_uri, PHB.has_entity_component, locator))
+
+            var_instance = handle_variable_component(g, char_data)
+            if var_instance:
+                g.add((per_pheno_uri, PHB.has_variable_component, var_instance))
+
+            # Link exactly one state (if resolvable) to the cell phenotype instance
+            if chosen_state_node is not None:
+                g.add((per_pheno_uri, PHB.has_quality_component, chosen_state_node))
+                g.add((cell_uri, CDAO["0000184"], chosen_state_node))  # Cell has_state
+
+            # Link Cell → Phenotype (to the per-cell instance)
+            g.add((cell_uri, PHB.refers_to_phenotype_statement, per_pheno_uri))
 
     return g, matrix_uri
 
@@ -1056,17 +1103,8 @@ def process_taxon(
                 tu_graph.add(t)
 
         state_symbol = str(cell).strip() if cell is not None else ""
-        # Unknown state
+        # Unknown state: handled at matrix level by per-cell phenotype; skip here
         if state_symbol == '?':
-            unknown_uuid = uuid.uuid5(UUID_NAMESPACE, f"{char_id}_unknown")
-            unknown_node = URIRef(KB[f"unknown_state_{unknown_uuid}"])
-            tu_graph.add((unknown_node, RDFS.label, Literal("unknown")))
-            tu_graph.add((unknown_node, RDF.type, OWL.NamedIndividual))
-            if g_char:
-                pheno_seed = f"pheno_{char_id}"
-                pheno_uuid = uuid.uuid5(UUID_NAMESPACE, pheno_seed)
-                pheno_uri = URIRef(KB[f"phe-{pheno_uuid}"])
-                tu_graph.add((pheno_uri, PHB.has_quality_component, unknown_node))
             continue
 
         # Skip polymorphic / missing states
@@ -1143,7 +1181,8 @@ def main():
     matrix_graph, matrix_uri = build_cdao_matrix(
         nexus_matrix=char_matrix,
         dataset=dataset,
-        char_ids_in_order=char_ids_in_order
+        char_ids_in_order=char_ids_in_order,
+        char_state_mapping=char_state_mapping
     )
 
     print("\n=== Processing each taxon (TU graphs) ===")
