@@ -16,6 +16,7 @@ on:
 jobs:
   test-build-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       # 1. Checkout repository with token (needed for tagging)
       ## Using fetch-depth: 0 to ensure full history for semantic versioning
@@ -89,8 +90,8 @@ jobs:
           docker compose -f docker-compose.yml config
           docker compose -f docker-compose.yml build
 
-      # Debug: Check secret visibility (safe)
-      - name: Debug secret visibility (safe)
+      # Debug: Check secret visibility
+      - name: Debug secret visibility
         run: |
           echo "Checking if Docker secrets are visible..."
           if [ -z "${{ secrets.DOCKER_USERNAME }}" ]; then
