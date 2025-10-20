@@ -5,7 +5,6 @@ import os
 import json
 import yaml
 import uuid
-import re
 from typing import Optional, Tuple, Dict, Any, List
 
 import dendropy
@@ -74,11 +73,34 @@ TXR = Namespace("http://purl.obolibrary.org/obo/TAXRANK_")
 UBERON = Namespace("http://purl.obolibrary.org/obo/UBERON_")
 UUID_NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
 
-# === GLOBAL MAPS ===
-CHAR_STATE_MAPPING: Dict[str, Dict[int, str]] = {}   # Char_ID -> {state_index -> state_uri_str}
-CHAR_URI_BY_ID: Dict[str, URIRef] = {}               # Char_ID -> character URI
-
 # === HELPERS ===
+
+# ---------- Common utility functions ----------
+
+def create_graph_with_namespaces() -> Graph:
+    """Create and bind namespaces to a new graph"""
+    g = Graph()
+    bind_namespaces(g)
+    return g
+
+def generate_uri(prefix: str, seed: str) -> URIRef:
+    """Centralized URI generation using UUID5"""
+    uuid_val = uuid.uuid5(UUID_NAMESPACE, seed)
+    return URIRef(KB[f"{prefix}-{uuid_val}"])
+
+def add_individual_triples(g: Graph, entity: URIRef, label: str) -> None:
+    """Add common individual triples (type and label)"""
+    g.add((entity, RDF.type, OWL.NamedIndividual))
+    g.add((entity, RDFS.label, Literal(label)))
+
+def assign_statement_type(g: Graph, entity: URIRef, variable_data: Optional[Dict]) -> None:
+    """Centralized logic for assigning statement types based on variable data"""
+    if not variable_data:
+        g.add((entity, RDF.type, PHB.NeomorphicStatement))
+    elif variable_data.get("Variable comment"):
+        g.add((entity, RDF.type, PHB.TransformationalComplexStatement))
+    else:
+        g.add((entity, RDF.type, PHB.TransformationalSimpleStatement))
 
 # ---------- Graph setup helpers ----------
 def bind_namespaces(g: Graph) -> Graph:
@@ -195,8 +217,7 @@ nexus_dataset = dendropy.DataSet.get(path=NEX_FILE, schema="nexus")
 char_matrix = nexus_dataset.char_matrices[0]  # DendroPy CharacterMatrix
 
 print("\n=== Loading SHACL Shapes ===")
-shapes_graph = Graph()
-bind_namespaces(shapes_graph)
+shapes_graph = create_graph_with_namespaces()
 shapes_graph.parse(SHACL_FILE, format="turtle")
 
 # Build a normalized label -> URI lookup to assist negation/complements
@@ -261,12 +282,10 @@ def handle_species(
     sp_g.add((sp_uri, RDF.type, TXR["0000006"]))  # the species is a TXR Species class
 
     # --- Species instance ---
-    sp_uuid = uuid.uuid5(UUID_NAMESPACE, sp_label.strip().lower())
-    sp_instance = URIRef(KB[f"sp-{sp_uuid}"])
+    sp_instance = generate_uri("sp", sp_label.strip().lower())
 
     sp_g.add((sp_instance, RDF.type, sp_uri))  # species individual is an instance of the species class
-    sp_g.add((sp_instance, RDFS.label, Literal(sp_label)))
-    sp_g.add((sp_instance, RDF.type, OWL.NamedIndividual))
+    add_individual_triples(sp_g, sp_instance, sp_label)
     
     # If we have an external ID (GBIF), link it
     if species_info.get("ID"):
@@ -311,19 +330,16 @@ def handle_character_type(
     Defensive against missing or None variable sections.
     """
     variable_data = data.get("Variable")
-    if not variable_data:
-        g.add((character, RDF.type, PHB.NeomorphicStatement))
-        g.add((character, RDF.type, OWL.NamedIndividual))
-        print(f"[Neomorphic] Char_ID: {data['Char_ID']}")
-        return
+    assign_statement_type(g, character, variable_data)
+    g.add((character, RDF.type, OWL.NamedIndividual))
 
-    if variable_data.get("Variable comment"):
-        g.add((character, RDF.type, PHB.TransformationalComplexStatement))
-        g.add((character, RDF.type, OWL.NamedIndividual))
+    # Print statement type for debugging
+    if not variable_data:
+        print(f"[Neomorphic] Char_ID: {data['Char_ID']}")
+    
+    elif variable_data.get("Variable comment"):
         print(f"[Transformational Complex] Char_ID: {data['Char_ID']}")
     else:
-        g.add((character, RDF.type, PHB.TransformationalSimpleStatement))
-        g.add((character, RDF.type, OWL.NamedIndividual))
         print(f"[Transformational Simple] Char_ID: {data['Char_ID']}")
 
 def handle_organism(
@@ -347,15 +363,13 @@ def handle_organism(
     uuid_seed = (
         f"{char_id}::{org_label.strip().lower()}" if char_id else org_label.strip().lower()
     )
-    org_uuid = uuid.uuid5(UUID_NAMESPACE, uuid_seed)
-    org_instance = URIRef(KB[f"org-{org_uuid}"])
+    org_instance = generate_uri("org", uuid_seed)
 
     g.add((org_uri, RDF.type, OWL.Class))
     g.add((org_uri, RDFS.label, Literal(org_label)))
     
     g.add((org_instance, RDF.type, org_uri))
-    g.add((org_instance, RDFS.label, Literal(org_label)))
-    g.add((org_instance, RDF.type, OWL.NamedIndividual))
+    add_individual_triples(g, org_instance, org_label)
 
     return org_instance
 
@@ -397,19 +411,15 @@ def handle_locator(
         return None  # malformed entry
 
     uri = next((v for k, v in loc_dict.items() if "uri" in k.lower() and v), None)
-    loc_uuid = uuid.uuid5(UUID_NAMESPACE, f"{uri or label.strip().lower()}")
-    current_instance = URIRef(KB[f"loc-{loc_uuid}"])
+    current_instance = generate_uri("loc", f"{uri or label.strip().lower()}")
 
     if uri:
         class_uri = URIRef(uri)
         g.add((class_uri, RDFS.label, Literal(label)))
         g.add((class_uri, RDF.type, OWL.Class))
-        g.add((current_instance, RDFS.label, Literal(label)))
         g.add((current_instance, RDF.type, class_uri))
-    else:
-        g.add((current_instance, RDFS.label, Literal(label)))
 
-    g.add((current_instance, RDF.type, OWL.NamedIndividual))
+    add_individual_triples(g, current_instance, label)
 
     # --- Chain anatomy ---
     g.add((parent_instance, BFO["0000051"], current_instance))  # previous → has_part → current
@@ -466,8 +476,7 @@ def compute_default_organism_instance_uri_from_dataset(
         char_id = row.get("Char_ID")
         if org_label and char_id:
             seed = f"{char_id}::{org_label.strip().lower()}"
-            org_uuid = uuid.uuid5(UUID_NAMESPACE, seed)
-            return URIRef(KB[f"org-{org_uuid}"])
+            return generate_uri("org-", seed)
     return None
 
 def handle_variable_component(
@@ -483,11 +492,9 @@ def handle_variable_component(
         return None
 
     var_label = var_data.get("Variable label", "Unnamed Variable")
-    var_uuid = uuid.uuid5(UUID_NAMESPACE, f"{var_data.get('Variable URI', var_label.strip().lower())}")
-    var_instance_uri = URIRef(KB[f"var-{var_uuid}"])
+    var_instance_uri = generate_uri("var", f"{var_data.get('Variable URI', var_label.strip().lower())}")
     
-    g.add((var_instance_uri, RDFS.label, Literal(var_label)))
-    g.add((var_instance_uri, RDF.type, OWL.NamedIndividual))
+    add_individual_triples(g, var_instance_uri, var_label)
 
     if var_data.get("Variable URI"):
         class_uri = URIRef(var_data["Variable URI"])
@@ -522,22 +529,14 @@ def handle_states(
             label = f"not {base_label}"
 
         # UUID for state
-        state_uuid = uuid.uuid5(UUID_NAMESPACE, f"{data['Char_ID']}_{uri or label.lower()}")
-        state_node = URIRef(KB[f"sta-{state_uuid}"])
+        state_node = generate_uri("sta", f"{data['Char_ID']}_{uri or label.lower()}")
 
         g.add((state_node, RDF.type, CDAO["0000045"]))  # CDAO State
 
-        # Link to final_component from variable ---
-        # if final_component:
-            # g.add((final_component, PHB.has_characteristic, state_node))
-
-        # Do not link to a phenotype here; per-cell phenotypes will link exactly one state
-
         # Type assignment
-        g.add((state_node, RDFS.label, Literal(label)))
         if uri:
             g.add((state_node, RDF.type, URIRef(uri)))
-        g.add((state_node, RDF.type, OWL.NamedIndividual))
+        add_individual_triples(g, state_node, label)
 
         # Link state to character
         state_map_for_char[state_index] = str(state_node)
@@ -572,25 +571,17 @@ def process_phenotype(
     char_label = row.get("CharacterLabel", f"Character {char_id}")
 
     # Character class definition
-    char_uuid = uuid.uuid5(UUID_NAMESPACE, f"char_{char_id}")
-    char_uri = URIRef(KB[f"char-{char_uuid}"])
+    char_uri = generate_uri("char", f"char_{char_id}")
     g.add((char_uri, RDF.type, CDAO["0000075"]))  # CDAO Character
     g.add((char_uri, RDFS.label, Literal(char_label)))
 
     # Phenotype instance
-    pheno_uuid = uuid.uuid5(UUID_NAMESPACE, f"pheno-{char_id}")
-    phenotype_instance = URIRef(KB[f"phe-{pheno_uuid}"])
-    g.add((phenotype_instance, RDF.type, OWL.NamedIndividual))
-    g.add((phenotype_instance, RDFS.label, Literal(f"Phenotype statement for {char_label}")))
+    phenotype_instance = generate_uri("phe", f"pheno-{char_id}")
+    add_individual_triples(g, phenotype_instance, f"Phenotype statement for {char_label}")
 
     # Decide statement class based on Variable section
     variable_data = row.get("Variable")
-    if not variable_data:
-        g.add((phenotype_instance, RDF.type, PHB.NeomorphicStatement))
-    elif variable_data.get("Variable comment"):
-        g.add((phenotype_instance, RDF.type, PHB.TransformationalComplexStatement))
-    else:
-        g.add((phenotype_instance, RDF.type, PHB.TransformationalSimpleStatement))
+    assign_statement_type(g, phenotype_instance, variable_data)
 
     # Organism + locators
     organism_instance, locator_instances = handle_organism_and_locators(g, row)
@@ -614,11 +605,11 @@ def process_phenotype(
         print(f"[DEBUG] {char_label} (ID {char_id}) may_have_state -> {state_uri}")
 
     # Species Graph
-    sp_g = Graph()
+    sp_g = create_graph_with_namespaces()
     sp_label = row.get("SpeciesLabel")
     species_id = row.get("SpeciesID")
     if sp_label and species_id:
-        sp_uri = URIRef(KB[f"sp-{uuid.uuid5(UUID_NAMESPACE, sp_label)}"])
+        sp_uri = generate_uri("sp", sp_label)
         sp_g.add((sp_uri, RDF.type, PHB.Species))
         sp_g.add((sp_uri, RDFS.label, Literal(sp_label)))
         sp_g.add((sp_uri, DWC.parentNameUsageID, URIRef(f"https://www.gbif.org/species/{species_id}")))
@@ -799,8 +790,7 @@ def build_character_graphs(
     combined_report_graph: Optional[Graph] = None,
     validation_dir: Optional[str] = None
 ) -> Tuple[Graph, Dict[str, Graph], Dict[str, Dict[int, str]], List[str]]:
-    combined_char_graph = Graph()
-    bind_namespaces(combined_char_graph)
+    combined_char_graph = create_graph_with_namespaces()
     for t in base_graph:
         combined_char_graph.add(t)
 
@@ -812,8 +802,7 @@ def build_character_graphs(
         char_id = row["Char_ID"]
         char_ids_in_order.append(char_id)
 
-        g_char = Graph()
-        bind_namespaces(g_char)
+        g_char = create_graph_with_namespaces()
         for t in base_graph:
             g_char.add(t)
 
@@ -863,8 +852,7 @@ def build_cdao_matrix(
           - matrix_graph: RDFLib Graph of the matrix.
           - matrix_uri: URIRef of the matrix.
     """
-    g = Graph()
-    bind_namespaces(g)
+    g = create_graph_with_namespaces()
 
     # Create matrix URI
     matrix_uri = URIRef(f"http://phenobees.org/kb#mx-{uuid.uuid4().hex[:8]}")
@@ -874,8 +862,7 @@ def build_cdao_matrix(
 
     # TUs
     for taxon in nexus_matrix.taxon_namespace:
-        tu_uuid = uuid.uuid5(UUID_NAMESPACE, taxon.label)
-        tu_uri = URIRef(KB[f"tu-{tu_uuid}"])
+        tu_uri = generate_uri("tu", taxon.label)
         g.add((matrix_uri, CDAO["0000208"], tu_uri))  # CDAO has TU
 
     # Characters (columns) + phenotypes templates + species
@@ -898,24 +885,14 @@ def build_cdao_matrix(
         # Cells (taxon x character)
         for taxon in nexus_matrix.taxon_namespace:
             # UUID-based cell
-            cell_uuid = uuid.uuid5(UUID_NAMESPACE, f"{taxon.label}_{char_index}")
-            cell_uri = URIRef(KB[f"cell-{cell_uuid}"])
+            cell_uri = generate_uri("cell", f"{taxon.label}_{char_index}")
 
             # UUID-based TU (for consistency)
-            tu_uuid = uuid.uuid5(UUID_NAMESPACE, taxon.label)
-            tu_uri = URIRef(KB[f"tu-{tu_uuid}"])
+            tu_uri = generate_uri("tu", taxon.label)
 
             g.add((cell_uri, RDF.type, CDAO["0000008"]))  # CDAO Cell
             g.add((cell_uri, CDAO["0000191"], tu_uri)) # CDAO belongs to TU
             g.add((cell_uri, CDAO["0000205"], char_uri)) # CDAO belongs to Character
-
-            # Link Cell → Phenotype
-            # g.add((cell_uri, PHB.refers_to_phenotype_statement, phenotype_uri))
-
-            # Link all states to the cell
-            # for state_uri_str in state_map.values():
-                # state_node = URIRef(state_uri_str)
-                # g.add((cell_uri, CDAO["0000184"], state_node))  # CDAO has_state
 
             # Resolve the state for this specific cell
             cell_value = nexus_matrix[taxon][char_index]
@@ -924,10 +901,8 @@ def build_cdao_matrix(
             chosen_state_node: Optional[URIRef] = None
             if state_symbol == '?':
                 # Unknown state node (stable per character)
-                unknown_uuid = uuid.uuid5(UUID_NAMESPACE, f"{char_id}_unknown")
-                unknown_node = URIRef(KB[f"unknown_state_{unknown_uuid}"])
-                g.add((unknown_node, RDFS.label, Literal("unknown")))
-                g.add((unknown_node, RDF.type, OWL.NamedIndividual))
+                unknown_node = generate_uri("unknown_state", f"{char_id}_unknown")
+                add_individual_triples(g, unknown_node, "unknown")
                 chosen_state_node = unknown_node
             elif state_symbol and state_symbol != '-':
                 try:
@@ -940,21 +915,14 @@ def build_cdao_matrix(
 
             # Create and link a per-cell phenotype statement that points to exactly one state
             per_pheno_seed = f"pheno-{char_id}::{str(taxon.label).strip().lower()}"
-            per_pheno_uuid = uuid.uuid5(UUID_NAMESPACE, per_pheno_seed)
-            per_pheno_uri = URIRef(KB[f"phe-{per_pheno_uuid}"])
+            per_pheno_uri = generate_uri("phe", per_pheno_seed)
 
             # Minimal typing/label for the cell-specific phenotype
-            g.add((per_pheno_uri, RDF.type, OWL.NamedIndividual))
-            g.add((per_pheno_uri, RDFS.label, Literal(f"Phenotype statement for {char_data.get('CharacterLabel', char_id)} in {taxon.label}")))
+            add_individual_triples(g, per_pheno_uri, f"Phenotype statement for {char_data.get('CharacterLabel', char_id)} in {taxon.label}")
 
             # Assign statement class based on Variable section
             variable_data = char_data.get("Variable")
-            if not variable_data:
-                g.add((per_pheno_uri, RDF.type, PHB.NeomorphicStatement))
-            elif variable_data.get("Variable comment"):
-                g.add((per_pheno_uri, RDF.type, PHB.TransformationalComplexStatement))
-            else:
-                g.add((per_pheno_uri, RDF.type, PHB.TransformationalSimpleStatement))
+            assign_statement_type(g, per_pheno_uri, variable_data)
 
             # Attach the same organism/locator/variable components used by the character-level template
             org_instance, locator_instances = handle_organism_and_locators(g, char_data)
@@ -1020,8 +988,7 @@ def enrich_and_serialize_tu_graph(
     valid_label_html = f"<i>{binomial}</i> {author}".strip()
 
     # TU assertions
-    tu_graph.add((tu_uri, RDF.type, OWL.NamedIndividual))
-    tu_graph.add((tu_uri, RDFS.label, Literal(valid_label_html)))
+    add_individual_triples(tu_graph, tu_uri, valid_label_html)
     tu_graph.add((org_instance, RO["0003301"], tu_uri)) # RO has role in modelling
     tu_graph.add((tu_uri, RDF.type, CDAO["0000138"]))  # CDAO Taxon Unit
     tu_graph.add((tu_uri, IAO["0000219"], sp_instance)) # TU denotes species instance
@@ -1082,8 +1049,7 @@ def process_taxon(
     taxon_label = str(taxon.label)
 
     # Build a species subgraph for THIS taxon and get its instance + info
-    sp_graph = Graph()
-    bind_namespaces(sp_graph)
+    sp_graph = create_graph_with_namespaces()
 
     # Get the best match dict for this taxon label (or an empty dict)
     sp_data_guess = species_data.get(taxon_label, {})
@@ -1098,12 +1064,10 @@ def process_taxon(
     serialize_species_graph(sp_graph, taxon_label, os.path.join(dir_combined, "species"))
 
     # TU URI
-    tu_uuid = uuid.uuid5(UUID_NAMESPACE, f"{taxon_label.strip().lower()}")
-    tu_uri = URIRef(KB[f"tu-{tu_uuid}"])
+    tu_uri = generate_uri("tu", f"{taxon_label.strip().lower()}")
 
     # Build a TU-specific graph
-    tu_graph = Graph()
-    bind_namespaces(tu_graph)
+    tu_graph = create_graph_with_namespaces()
 
     # Copy relevant TU triples from matrix_graph
     tu_fragment = f"tu-{taxon_label.replace(' ', '_')}"
@@ -1126,15 +1090,6 @@ def process_taxon(
         state_symbol = str(cell).strip() if cell is not None else ""
         # Unknown state: handled at matrix level by per-cell phenotype; skip here
         if state_symbol == '?':
-            # unknown_uuid = uuid.uuid5(UUID_NAMESPACE, f"{char_id}_unknown")
-            # unknown_node = URIRef(KB[f"unknown_state_{unknown_uuid}"])
-            # tu_graph.add((unknown_node, RDFS.label, Literal("unknown")))
-            # tu_graph.add((unknown_node, RDF.type, OWL.NamedIndividual))
-            # if g_char:
-                # pheno_seed = f"pheno_{char_id}"
-                # pheno_uuid = uuid.uuid5(UUID_NAMESPACE, pheno_seed)
-                # pheno_uri = URIRef(KB[f"phe-{pheno_uuid}"])
-                # tu_graph.add((pheno_uri, PHB.has_quality_component, unknown_node))
             continue
 
         # Skip polymorphic / missing states
@@ -1148,7 +1103,7 @@ def process_taxon(
         # Link character to the resolved state node
         state_uri_str = char_state_mapping.get(char_id, {}).get(state_index)
         if state_uri_str and g_char:
-            char_uri = URIRef(KB[f"char-{uuid.uuid5(UUID_NAMESPACE, str(char_id))}"])
+            char_uri = generate_uri("char", f"char_{char_id}")
             tu_graph.add((char_uri, PHB.may_have_state, URIRef(state_uri_str)))
             print(f"[TU mapping] {taxon_label} -> Char {char_id}, StateIndex {state_index}")
 
@@ -1191,12 +1146,10 @@ def main():
     base_graph = build_base_graph()
 
     # Combined report graph for all validations
-    combined_report_graph = Graph()
-    bind_namespaces(combined_report_graph)
+    combined_report_graph = create_graph_with_namespaces()
 
     # Global species graph accumulator
-    sp_g = Graph()
-    bind_namespaces(sp_g)
+    sp_g = create_graph_with_namespaces()
 
     # 1) Build per-character graphs
     combined_char_graph, character_graphs, char_state_mapping, char_ids_in_order = build_character_graphs(
@@ -1245,8 +1198,7 @@ def main():
     write_ttl_with_sections(sp_g, species_ttl)
 
     # === Merge everything into one combined TTL ===
-    final_graph = Graph()
-    bind_namespaces(final_graph)
+    final_graph = create_graph_with_namespaces()
 
     # Merge base, characters, matrix, species, and TU graphs
     for t in base_graph:
