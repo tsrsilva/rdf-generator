@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # 1. Checkout repository with token (needed for tagging)
+      ## Using fetch-depth: 0 to ensure full history for semantic versioning
+      ### Think about setting a credential helper to manage Docker secrets outside containers
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
