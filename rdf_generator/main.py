@@ -426,21 +426,39 @@ def handle_locator(
 
     return current_instance
 
+def is_organism_label(label: Optional[str], target: str) -> bool:
+    return bool(label) and label.strip().lower() == target
+
+def is_adult_organism(org_data: Dict[str, Any]) -> bool:
+    return is_organism_label(org_data.get("Label"), "adult organism")
+
+def is_female_organism(org_data: Dict[str, Any]) -> bool:
+    return is_organism_label(org_data.get("Label"), "female organism")
+
+def is_male_organism(org_data: Dict[str, Any]) -> bool:
+    return is_organism_label(org_data.get("Label"), "male organism")
+
 def handle_organism_and_locators(
     g: Graph,
-    data: Dict[str, Any]
+    data: Dict[str, Any],
+    override_org: Optional[Dict[str, Any]] = None
 ) -> Tuple[Optional[URIRef], List[URIRef]]:
     """
     Wrapper: handle organism + its locators.
     Returns a tuple:
         - organism_instance (or None)
         - list of locator instances in their chained order
+
+    If override_org is provided, it will be used instead of data["Organism"].
     """
+
+    # Decide which organism data to use
+    organism_data = override_org if override_org is not None else (data.get("Organism") or {})
 
     # Create a per-Char_ID organism instance (salt UUID with Char_ID)
     organism_instance = handle_organism(
         g,
-        data.get("Organism") or {},
+        organism_data,
         char_id=data.get("Char_ID")
     )
     previous_instance = organism_instance
@@ -911,41 +929,56 @@ def build_cdao_matrix(
             per_pheno_seed = f"pheno-{char_id}::{str(taxon.label).strip().lower()}"
             per_pheno_uri = generate_uri("phe", per_pheno_seed)
 
-            # Minimal typing/label for the cell-specific phenotype
-            add_individual_triples(g, per_pheno_uri, f"Phenotype statement for {char_data.get('CharacterLabel', char_id)} in {taxon.label}")
+            # Determine organism duplication needs
+            org_data_in = char_data.get("Organism") or {}
+            duplicate_for_sex = is_adult_organism(org_data_in) and not (is_female_organism(org_data_in) or is_male_organism(org_data_in))
 
-            # Assign statement class based on Variable section
-            variable_data = char_data.get("Variable")
-            assign_statement_type(g, per_pheno_uri, variable_data)
+            # Build list of phenotype variants to create
+            pheno_variants: List[Tuple[URIRef, Optional[Dict[str, Any]]]] = []
+            if duplicate_for_sex:
+                # Create deterministic URIs for female/male variants
+                phe_female = generate_uri("phe", per_pheno_seed + "::female")
+                phe_male = generate_uri("phe", per_pheno_seed + "::male")
+                pheno_variants.append((phe_female, {"Label": "female organism", "URI": str(UBERON["0003100"])}))
+                pheno_variants.append((phe_male, {"Label": "male organism", "URI": str(UBERON["0003101"])}))
+            else:
+                pheno_variants.append((per_pheno_uri, None))
 
-            # Attach the same organism/locator/variable components used by the character-level template
-            org_instance, locator_instances = handle_organism_and_locators(g, char_data)
-            if org_instance:
-                g.add((per_pheno_uri, PHB.has_organismal_component, org_instance))
-            for locator in locator_instances:
-                g.add((per_pheno_uri, PHB.has_entity_component, locator))
+            for ph_uri, override_org in pheno_variants:
+                # Minimal typing/label for the cell-specific phenotype
+                add_individual_triples(g, ph_uri, f"Phenotype statement for {char_data.get('CharacterLabel', char_id)} in {taxon.label}")
 
-            var_instance = handle_variable_component(g, char_data, char_id=char_id)
-            if var_instance:
-                g.add((per_pheno_uri, PHB.has_variable_component, var_instance))
+                # Assign statement class based on Variable section
+                variable_data = char_data.get("Variable")
+                assign_statement_type(g, ph_uri, variable_data)
 
-            # Link exactly one state (if resolvable) to the cell phenotype instance
-            if chosen_state_node is not None:
-                # Phenotype has this quality/state (single)
-                g.add((per_pheno_uri, PHB.has_quality_component, chosen_state_node))
+                # Attach the organism/locator/variable components (with optional override)
+                org_instance, locator_instances = handle_organism_and_locators(g, char_data, override_org=override_org)
+                if org_instance:
+                    g.add((ph_uri, PHB.has_organismal_component, org_instance))
+                for locator in locator_instances:
+                    g.add((ph_uri, PHB.has_entity_component, locator))
 
-                # Connect either Variable (preferred) or last Locator to the state via has_characteristic
-                if var_instance is not None:
-                    g.add((var_instance, PHB.has_characteristic, chosen_state_node))
-                elif locator_instances:
-                    last_locator = locator_instances[-1]
-                    g.add((last_locator, PHB.has_characteristic, chosen_state_node))
+                var_instance = handle_variable_component(g, char_data, char_id=char_id)
+                if var_instance:
+                    g.add((ph_uri, PHB.has_variable_component, var_instance))
 
-                # Cell also points t the state
-                g.add((cell_uri, CDAO["0000184"], chosen_state_node))  # Cell has_state
+                # Link exactly one state (if resolvable) to the cell phenotype instance
+                if chosen_state_node is not None:
+                    g.add((ph_uri, PHB.has_quality_component, chosen_state_node))
 
-            # Link Cell → Phenotype (to the per-cell instance)
-            g.add((cell_uri, PHB.refers_to_phenotype_statement, per_pheno_uri))
+                    # Connect either Variable (preferred) or last Locator to the state via has_characteristic
+                    if var_instance is not None:
+                        g.add((var_instance, PHB.has_characteristic, chosen_state_node))
+                    elif locator_instances:
+                        last_locator = locator_instances[-1]
+                        g.add((last_locator, PHB.has_characteristic, chosen_state_node))
+
+                    # Cell also points to the state
+                    g.add((cell_uri, CDAO["0000184"], chosen_state_node))  # Cell has_state
+
+                # Link Cell → Phenotype (to the per-cell instance)
+                g.add((cell_uri, PHB.refers_to_phenotype_statement, ph_uri))
 
     return g, matrix_uri
 
