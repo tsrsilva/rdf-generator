@@ -360,10 +360,10 @@ def handle_organism(
     org_uri = URIRef(org_uri_str)
 
     # Salt UUID with Char_ID (when available) to create per-character instances
-    uuid_seed = (
+    org_uuid_seed = (
         f"{char_id}::{org_label.strip().lower()}" if char_id else org_label.strip().lower()
     )
-    org_instance = generate_uri("org", uuid_seed)
+    org_instance = generate_uri("org", org_uuid_seed)
 
     g.add((org_uri, RDF.type, OWL.Class))
     g.add((org_uri, RDFS.label, Literal(org_label)))
@@ -376,7 +376,7 @@ def handle_organism(
 def handle_locator(
     g: Graph,
     locator: Any,              
-    parent_instance: URIRef    # now always organism or previous locator
+    parent_instance: URIRef 
 ) -> Optional[URIRef]:
     """
     Add RDF triples for an anatomical or other locator entity.
@@ -481,8 +481,8 @@ def compute_default_organism_instance_uri_from_dataset(
 
 def handle_variable_component(
     g: Graph,
-    data: Dict[str, Any]
-    # final_component: Optional[URIRef] = None
+    data: Dict[str, Any],
+    char_id: Optional[str] = None
 ) -> Optional[URIRef]:
     """
     Add RDF triples for the 'Variable' section. Returns the variable instance URIRef or None.
@@ -491,15 +491,25 @@ def handle_variable_component(
     if not var_data:
         return None
 
+    
+
+    # Salt UUID with Char_ID (when available) to create per-character instances
     var_label = var_data.get("Variable label", "Unnamed Variable")
-    var_instance_uri = generate_uri("var", f"{var_data.get('Variable URI', var_label.strip().lower())}")
+    var_uri_str = var_data.get("Variable URI") or str(KB[var_label.replace(" ", "_")])
+    var_uri = URIRef(var_uri_str)
+    var_uuid_seed = (
+        f"{char_id}::{var_label.strip().lower()}" if char_id else var_label.strip().lower()
+    )
+    var_instance_uri = generate_uri("var", var_uuid_seed)
+
+    # var_instance_uri = generate_uri("var", f"{var_data.get('Variable URI', var_label.strip().lower())}")
     
     add_individual_triples(g, var_instance_uri, var_label)
 
     if var_data.get("Variable URI"):
-        class_uri = URIRef(var_data["Variable URI"])
-        g.add((var_instance_uri, RDF.type, class_uri))
-        g.add((class_uri, RDFS.label, Literal(var_label)))
+        var_uri = URIRef(var_data["Variable URI"])
+        g.add((var_instance_uri, RDF.type, var_uri))
+        g.add((var_uri, RDFS.label, Literal(var_label)))
 
     if var_data.get("Variable comment"):
         g.add((var_instance_uri, RDFS.comment, Literal(var_data["Variable comment"])))
@@ -576,6 +586,11 @@ def process_phenotype(
 
     # States: build state nodes and register allowed states per Character
     state_map_for_char = handle_states(g, row)
+
+    # Attach Variable component at the character-level template (unique per Char_ID)
+    var_instance_char = handle_variable_component(g, row, char_id=char_id)
+    if var_instance_char:
+        g.add((char_uri, PHB.has_variable_component, var_instance_char))
     
     # Catalog allowed states at the Character level only
     for idx, state_uri in state_map_for_char.items():
@@ -910,7 +925,7 @@ def build_cdao_matrix(
             for locator in locator_instances:
                 g.add((per_pheno_uri, PHB.has_entity_component, locator))
 
-            var_instance = handle_variable_component(g, char_data)
+            var_instance = handle_variable_component(g, char_data, char_id=char_id)
             if var_instance:
                 g.add((per_pheno_uri, PHB.has_variable_component, var_instance))
 
