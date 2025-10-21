@@ -16,7 +16,6 @@ on:
 jobs:
   test-build-release:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
       # 1. Checkout repository with token (needed for tagging)
       ## Using fetch-depth: 0 to ensure full history for semantic versioning

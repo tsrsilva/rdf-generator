@@ -546,7 +546,7 @@ def handle_states(
 def process_phenotype(
         g: Graph, 
         row: Dict[str, Any]
-) -> Tuple[URIRef, URIRef, Dict[int, str], Graph]:
+) -> Tuple[URIRef, Dict[int, str], Graph]:
     """
     Construct a phenotype statement graph for a single dataset row.
 
@@ -563,7 +563,6 @@ def process_phenotype(
     Returns:
         A tuple of:
           - char_uri: URIRef for the Character class.
-          - phenotype_instance: URIRef for the phenotype statement individual.
           - state_map_for_char: Mapping of state indices to KB URIs.
           - sp_g: Species-specific RDFLib Graph (possibly empty).
     """
@@ -575,28 +574,8 @@ def process_phenotype(
     g.add((char_uri, RDF.type, CDAO["0000075"]))  # CDAO Character
     g.add((char_uri, RDFS.label, Literal(char_label)))
 
-    # Phenotype instance
-    phenotype_instance = generate_uri("phe", f"pheno-{char_id}")
-    add_individual_triples(g, phenotype_instance, f"Phenotype statement for {char_label}")
-
-    # Decide statement class based on Variable section
-    variable_data = row.get("Variable")
-    assign_statement_type(g, phenotype_instance, variable_data)
-
-    # Organism + locators
-    organism_instance, locator_instances = handle_organism_and_locators(g, row)
-    if organism_instance:
-        g.add((phenotype_instance, PHB.has_organismal_component, organism_instance))
-    for locator in locator_instances:
-        g.add((phenotype_instance, PHB.has_entity_component, locator))
-
-    # Variable Component (no attachment to phenotype here; per-cell will attach)
-    variable_instance = handle_variable_component(g, row) # final_component=phenotype_instance)
-    if variable_instance:
-        g.add((phenotype_instance, PHB.has_variable_component, variable_instance))
-
     # States: build state nodes and register allowed states per Character
-    state_map_for_char = handle_states(g, row) # final_component=phenotype_instance)
+    state_map_for_char = handle_states(g, row)
     
     # Catalog allowed states at the Character level only
     for idx, state_uri in state_map_for_char.items():
@@ -617,7 +596,7 @@ def process_phenotype(
         for s, p, o in sp_g:
             print(f"  {s} {p} {o}")
 
-    return char_uri, phenotype_instance, state_map_for_char, sp_g
+    return char_uri, state_map_for_char, sp_g
 
 # ---------- Validation + Serialization ----------
 
@@ -807,7 +786,7 @@ def build_character_graphs(
             g_char.add(t)
 
         # Build phenotype and species graph
-        char_uri, phenotype_uri, state_map_for_char, sp_g = process_phenotype(g_char, row)
+        char_uri, state_map_for_char, sp_g = process_phenotype(g_char, row)
         char_state_mapping[char_id] = state_map_for_char
 
         # Merge species graph if present
@@ -873,7 +852,7 @@ def build_cdao_matrix(
             continue  # skip if no matching row
 
         # Process phenotype template (character-level; no state attachment here)
-        char_uri, phenotype_uri, state_map, sp_g = process_phenotype(g, char_data)
+        char_uri, state_map, sp_g = process_phenotype(g, char_data)
 
         # Merge species triples
         if sp_g:
