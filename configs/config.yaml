@@ -9,8 +9,6 @@ input:
 
 output:
   base_dir: "outputs"
-  ttl: "output_ttl"
-  png: "output_png"
   validation: "validation_reports"
   combined: "combined_graphs"
   graphviz: "graphviz_images"

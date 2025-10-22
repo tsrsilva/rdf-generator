@@ -7,6 +7,7 @@ import yaml
 import uuid
 from typing import Optional, Tuple, Dict, Any, List
 
+import argparse
 import dendropy
 from rdflib import Graph, Namespace, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL
@@ -43,15 +44,13 @@ SPECIES_FILE = os.path.join(DATA_DIR, config["input"]["species"])
 SHACL_FILE = os.path.join(DATA_DIR, config["input"]["shacl"])
 
 # Output directories
-DIR_OUTPUT_TTL = os.path.join(OUTPUT_DIR, config["output"]["ttl"])
-DIR_OUTPUT_PNG = os.path.join(OUTPUT_DIR, config["output"]["png"])
 DIR_VALIDATION = os.path.join(OUTPUT_DIR, config["output"]["validation"])
 DIR_COMBINED = os.path.join(OUTPUT_DIR, config["output"]["combined"])
 DIR_GRAPHVIZ = os.path.join(OUTPUT_DIR, config["output"]["graphviz"])
 
 # === SETUP ===
 # Create output dirs if they don’t exist
-for d in [DIR_OUTPUT_TTL, DIR_OUTPUT_PNG, DIR_VALIDATION, DIR_COMBINED, DIR_GRAPHVIZ]:
+for d in [DIR_VALIDATION, DIR_COMBINED, DIR_GRAPHVIZ]:
     os.makedirs(d, exist_ok=True)
 
 # Reset summary each run
@@ -376,7 +375,8 @@ def handle_organism(
 def handle_locator(
     g: Graph,
     locator: Any,              
-    parent_instance: URIRef 
+    parent_instance: URIRef,
+    char_id: Optional[str] = None
 ) -> Optional[URIRef]:
     """
     Add RDF triples for an anatomical or other locator entity.
@@ -411,7 +411,10 @@ def handle_locator(
         return None  # malformed entry
 
     uri = next((v for k, v in loc_dict.items() if "uri" in k.lower() and v), None)
-    current_instance = generate_uri("loc", f"{uri or label.strip().lower()}")
+    # Salt UUID with Char_ID to ensure per-character uniqueness
+    seed_base = uri or label.strip().lower()
+    seed = f"{char_id}::{seed_base}" if char_id else seed_base
+    current_instance = generate_uri("loc", seed)
 
     if uri:
         class_uri = URIRef(uri)
@@ -984,7 +987,7 @@ def build_cdao_matrix(
 
 # ---------- TU processing & outputs ----------
 
-def enrich_and_serialize_tu_graph(
+def enrich_tu_graph(
     tu_graph: Graph,
     tu_uri: URIRef,
     taxon_label: str,
@@ -1019,45 +1022,6 @@ def enrich_and_serialize_tu_graph(
     tu_graph.add((org_instance, RO["0003301"], tu_uri)) # RO has role in modelling
     tu_graph.add((tu_uri, RDF.type, CDAO["0000138"]))  # CDAO Taxon Unit
     tu_graph.add((tu_uri, IAO["0000219"], sp_instance)) # TU denotes species instance
-    
-    # Write TU graph to TTL
-    ttl_file = os.path.join(dir_combined, f"tu_{taxon_label.replace(' ', '_')}.ttl")
-    write_ttl_with_sections(tu_graph, ttl_file)
-    print(f"[OK] TTL written for {taxon_label} → {ttl_file}")
-
-def visualize_tu_graph(tu_graph: Graph, tu_uri: URIRef, output_dir: str, taxon_label: str) -> None:
-    role_map = {}
-    for s, p, o in tu_graph:
-        if p == PHB.has_entity_component:
-            role_map[o] = "locator"
-        elif p == PHB.has_variable_component:
-            role_map[o] = "variable"
-        elif p == PHB.has_quality_component:
-            role_map[o] = "state"
-        elif p == PHB.has_organismal_component:
-            role_map[o] = "organism"
-        if s == tu_uri:
-            role_map[s] = "TU"
-
-    classes, individuals, edges = [], [], []
-    all_nodes = set()
-    for s, p, o in tu_graph:
-        all_nodes.update([s, o])
-
-    for n in all_nodes:
-        role = role_map.get(n)
-        n_str = str(n)
-        if role in ("TU", "locator", "variable", "state", "organism"):
-            individuals.append(n_str)
-        else:
-            classes.append(n_str)
-
-    for s, p, o in tu_graph:
-        edges.append((str(s), str(o), p.split('#')[-1]))
-
-    svg_file = os.path.join(output_dir, f"tu_{taxon_label.replace(' ', '_')}.svg")
-    visualize_graph(classes, individuals, edges, output_file=svg_file)
-    print(f"[OK] {taxon_label} → SVG: {svg_file}")
 
 def process_taxon(
     taxon,
@@ -1149,8 +1113,8 @@ def process_taxon(
     # Compute a stable organism instance URI for this TU
     org_instance = compute_default_organism_instance_uri_from_dataset(dataset)  # uses global 'dataset'
 
-    # Enrich + serialize TTL
-    enrich_and_serialize_tu_graph(
+    # Enrich tu graph
+    enrich_tu_graph(
         tu_graph,
         tu_uri,
         taxon_label,
@@ -1160,9 +1124,6 @@ def process_taxon(
         org_instance,
         dir_combined
     )
-
-    # Visualize TU
-    visualize_tu_graph(tu_graph, tu_uri, dir_graphviz, taxon_label)
 
     return tu_graph  # return the TU graph for main to merge later
 
@@ -1243,6 +1204,268 @@ def main():
     merged_ttl = os.path.join(DIR_COMBINED, "all_combined.ttl")
     write_ttl_with_sections(final_graph, merged_ttl)
     print(f"[OK] Full combined TTL → {merged_ttl}")
+
+    # Render combined visualization
+    combined_svg = os.path.join(DIR_GRAPHVIZ, "combined.svg")
+    build_combined_visualization(final_graph, combined_svg)
+    print(f"[OK] Combined graph visualization → {combined_svg}")
+
+    # Serialize combined SHACL validation report graph
+    validation_report_ttl = os.path.join(DIR_VALIDATION, "validation_report.ttl")
+    try:
+        combined_report_graph.serialize(destination=validation_report_ttl, format="turtle")
+        print(f"[OK] SHACL combined validation report → {validation_report_ttl}")
+    except Exception as e:
+        print(f"[WARN] Failed to write SHACL validation report: {e}")
+
+# ---------- Combined visualization ----------
+
+def build_combined_visualization(
+    g: Graph,
+    output_path: str,
+    tu_filter: Optional[List[str]] = None,
+    prog: str = "sfdp",
+    ranksep: float = 3.0,
+    nodesep: float = 1.5,
+    splines: str = "curved",
+    cluster_by_tu: bool = False,
+    max_label_len: int = 48,
+    group_strategy: str = "buckets",  # initial | buckets | connected
+    group_bucket_count: int = 6,
+    add_spacers: bool = True
+) -> None:
+    """
+    Build a single combined Graphviz visualization from the final merged RDF graph.
+
+    Focus on core components and predicates already used in the pipeline:
+      - Nodes: Matrix, TUs, Characters, Cells, Phenotypes, Species (concept + instance),
+               Variables, Locators, Organisms, States.
+      - Edges: key CDAO and PHB predicates wiring these components.
+    """
+    # Role detection helpers
+    def is_uri(u):
+        return isinstance(u, URIRef)
+
+    # Resolve key predicate URIs for compact comparisons
+    C_has_tu = CDAO["0000208"]       # Matrix has TU
+    C_has_char = CDAO["0000142"]     # Matrix has Character
+    C_cell = CDAO["0000008"]         # Cell class
+    C_cell_belongs_tu = CDAO["0000191"]
+    C_cell_belongs_char = CDAO["0000205"]
+    C_cell_has_state = CDAO["0000184"]
+
+    PH_has_org = PHB.has_organismal_component
+    PH_has_ent = PHB.has_entity_component
+    PH_has_var = PHB.has_variable_component
+    PH_has_qual = PHB.has_quality_component
+    PH_refers_pheno = PHB.refers_to_phenotype_statement
+    PH_has_charac = PHB.has_characteristic
+
+    IAO_denotes = IAO["0000219"]
+
+    # Collect roles
+    roles = {}
+    labels = {}
+
+    def label_for(u: URIRef) -> str:
+        # Prefer rdfs:label if present
+        lab = next((str(o) for o in g.objects(u, RDFS.label)), None)
+        if lab:
+            return lab
+        # Fallback to suffix
+        us = str(u)
+        if '#' in us:
+            return us.split('#')[-1]
+        return us.rstrip('/').split('/')[-1]
+
+    # Identify Matrix nodes
+    matrix_nodes = set(s for s, p, o in g.triples((None, RDF.type, CDAO["0000056"])) )
+    for m in matrix_nodes:
+        roles[m] = "matrix"
+        labels[m] = label_for(m)
+
+    # Identify TU nodes via explicit typing or usage
+    tu_nodes = set()
+    for s, p, o in g:
+        if p == C_has_tu and is_uri(o):
+            tu_nodes.add(o)
+        if p == C_cell_belongs_tu and is_uri(o):
+            tu_nodes.add(o)
+    # Also those typed as CDAO Taxon Unit
+    for tu in g.subjects(RDF.type, CDAO["0000138"]):
+        tu_nodes.add(tu)
+    for tu in tu_nodes:
+        roles[tu] = "tu"
+        labels[tu] = label_for(tu)
+
+    # Characters
+    char_nodes = set()
+    for s, p, o in g.triples((None, RDF.type, CDAO["0000075"])):
+        char_nodes.add(s)
+    for s, p, o in g:
+        if p == C_has_char and is_uri(o):
+            char_nodes.add(o)
+        if p == C_cell_belongs_char and is_uri(o):
+            char_nodes.add(o)
+    for ch in char_nodes:
+        roles[ch] = "character"
+        labels[ch] = label_for(ch)
+
+    # Cells
+    cell_nodes = set(s for s, p, o in g.triples((None, RDF.type, C_cell)))
+    for c in cell_nodes:
+        roles[c] = "cell"
+        labels[c] = label_for(c)
+
+    # Phenotypes: look for nodes that are referenced by PHB.refers_to_phenotype_statement
+    phe_nodes = set(o for s, p, o in g.triples((None, PH_refers_pheno, None)) if is_uri(o))
+    for ph in phe_nodes:
+        roles[ph] = "phenotype"
+        labels[ph] = label_for(ph)
+
+    # Species concept and instance: look for IAO:0000219 from TU → species instance
+    sp_inst_nodes = set(o for s, p, o in g.triples((None, IAO_denotes, None)) if is_uri(o))
+    for si in sp_inst_nodes:
+        roles[si] = "species_instance"
+        labels[si] = label_for(si)
+    # Species concept nodes: class of species instance or TXR species class
+    for si in sp_inst_nodes:
+        for cls in g.objects(si, RDF.type):
+            if is_uri(cls):
+                roles.setdefault(cls, "species_concept")
+                labels[cls] = label_for(cls)
+    for sc in g.subjects(RDF.type, TXR["0000006"]):
+        roles[sc] = "species_concept"
+        labels[sc] = label_for(sc)
+
+    # Variables, Locators, Organisms, States inferred from predicates
+    var_nodes = set(o for s, p, o in g.triples((None, PH_has_var, None)) if is_uri(o))
+    for v in var_nodes:
+        roles[v] = "variable"
+        labels[v] = label_for(v)
+
+    loc_nodes = set(o for s, p, o in g.triples((None, PH_has_ent, None)) if is_uri(o))
+    for l in loc_nodes:
+        roles[l] = "locator"
+        labels[l] = label_for(l)
+
+    org_nodes = set(o for s, p, o in g.triples((None, PH_has_org, None)) if is_uri(o))
+    for o_ in org_nodes:
+        roles[o_] = "organism"
+        labels[o_] = label_for(o_)
+
+    state_nodes = set(o for s, p, o in g.triples((None, PH_has_qual, None)) if is_uri(o))
+    state_nodes |= set(o for s, p, o in g.triples((None, C_cell_has_state, None)) if is_uri(o))
+    for st in state_nodes:
+        roles[st] = "state"
+        labels[st] = label_for(st)
+
+    # Build edges of interest
+    edges = []  # (src, dst, label)
+    def add_edge(s, d, label):
+        edges.append((str(s), str(d), label))
+
+    # Matrix edges
+    for m in matrix_nodes:
+        for tu in g.objects(m, C_has_tu):
+            add_edge(m, tu, "hasTU")
+        for ch in g.objects(m, C_has_char):
+            add_edge(m, ch, "hasCharacter")
+
+    # Cell edges
+    for c in cell_nodes:
+        for tu in g.objects(c, C_cell_belongs_tu):
+            add_edge(c, tu, "belongsToTU")
+        for ch in g.objects(c, C_cell_belongs_char):
+            add_edge(c, ch, "belongsToCharacter")
+        for st in g.objects(c, C_cell_has_state):
+            add_edge(c, st, "hasState")
+        for ph in g.objects(c, PH_refers_pheno):
+            add_edge(c, ph, "refersToPhenotype")
+
+    # Phenotype component edges
+    for ph in phe_nodes:
+        for o_ in g.objects(ph, PH_has_org):
+            add_edge(ph, o_, "hasOrganism")
+        for l in g.objects(ph, PH_has_ent):
+            add_edge(ph, l, "hasEntity")
+        for v in g.objects(ph, PH_has_var):
+            add_edge(ph, v, "hasVariable")
+        for st in g.objects(ph, PH_has_qual):
+            add_edge(ph, st, "hasQuality")
+
+    # Variable/Locator characteristic to State
+    for v in var_nodes:
+        for st in g.objects(v, PH_has_charac):
+            add_edge(v, st, "hasCharacteristic")
+    for l in loc_nodes:
+        for st in g.objects(l, PH_has_charac):
+            add_edge(l, st, "hasCharacteristic")
+
+    # TU → species instance, species instance → species concept (rdf:type)
+    for tu in tu_nodes:
+        for si in g.objects(tu, IAO_denotes):
+            add_edge(tu, si, "denotes")
+            for sc in g.objects(si, RDF.type):
+                if is_uri(sc):
+                    add_edge(si, sc, "rdf:type")
+
+    # Build node lists for visualization with role-based styling
+    classes = []
+    individuals = []
+    # Color/shape maps
+    style_map = {
+        "matrix": ("box3d", "#d6d8db"),
+        "tu": ("ellipse", "#ffe0b2"),
+        "character": ("box", "#cce5ff"),
+        "cell": ("diamond", "#f8d7da"),
+        "phenotype": ("ellipse", "#d5f5e3"),
+        "species_concept": ("hexagon", "#e2e3e5"),
+        "species_instance": ("doublecircle", "#fff3cd"),
+        "state": ("note", "#e2f0d9"),
+        "variable": ("component", "#d1ecf1"),
+        "locator": ("folder", "#e2e3e5"),
+        "organism": ("house", "#f5e6ff"),
+    }
+
+    # Prepare Graphviz graph
+    G = AGraph(directed=True, strict=False, rankdir="LR")
+    G.node_attr.update(
+        shape="ellipse", style="filled", fillcolor="#d5f5e3",
+        margin="0.1,0.1", width="0.2", height="0.2",
+        nodesep="1.0", ranksep="2.0", splines="true"
+    )
+
+    # Add nodes with styling
+    for node, role in roles.items():
+        n_id = str(node)
+        label = labels.get(node, n_id.split('#')[-1])
+        shape, color = style_map.get(role, ("ellipse", "#d5f5e3"))
+        G.add_node(n_id, label=label, tooltip=n_id, shape=shape, fillcolor=color)
+        # Partition nodes into classes/individuals arrays for potential subgraphs
+        # Treat species_concept and character as classes; others as individuals
+        if role in ("species_concept", "character"):
+            classes.append(n_id)
+        else:
+            individuals.append(n_id)
+
+    # Add edges
+    for s, d, lbl in edges:
+        G.add_edge(s, d, label=lbl)
+
+    # Optional: group ranks
+    if classes:
+        G.add_subgraph(classes, rank='same')
+    if individuals:
+        G.add_subgraph(individuals, rank='same')
+
+    # Layout and draw
+    try:
+        G.layout(prog="sfdp")
+    except Exception:
+        G.layout(prog="fdp")
+    G.draw(output_path)
+
 
 if __name__ == "__main__":
     main()
