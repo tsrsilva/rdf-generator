@@ -46,19 +46,15 @@ def test_main_runs(monkeypatch):
     temp_dir = tempfile.TemporaryDirectory()
     try:
         # Define new temporary paths
-        out_ttl = os.path.join(temp_dir.name, "output_ttl")
-        out_png = os.path.join(temp_dir.name, "output_png")
         out_combined = os.path.join(temp_dir.name, "combined_graphs")
         out_graphviz = os.path.join(temp_dir.name, "graphviz_images")
         out_validation = os.path.join(temp_dir.name, "validation_reports")
 
         # Ensure directories exist before running
-        for path in [out_ttl, out_png, out_combined, out_graphviz, out_validation]:
+        for path in [out_combined, out_graphviz, out_validation]:
             os.makedirs(path, exist_ok=True)
         
         # Monkeypatch the module variables
-        monkeypatch.setattr(rdf_main, "DIR_OUTPUT_TTL", out_ttl)
-        monkeypatch.setattr(rdf_main, "DIR_OUTPUT_PNG", out_png)
         monkeypatch.setattr(rdf_main, "DIR_COMBINED", out_combined)
         monkeypatch.setattr(rdf_main, "DIR_GRAPHVIZ", out_graphviz)
         monkeypatch.setattr(rdf_main, "DIR_VALIDATION", out_validation)
