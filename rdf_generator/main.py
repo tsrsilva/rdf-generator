@@ -156,10 +156,6 @@ def build_base_graph() -> Graph:
     base.add((UBERON["0003100"], RDF.type, OWL.Class))
     base.add((UBERON["0003101"], RDF.type, OWL.Class))
 
-    base.add((UBERON["0007023"], RDFS.label, Literal("Adult Organism")))
-    base.add((UBERON["0003100"], RDFS.label, Literal("Female Organism")))
-    base.add((UBERON["0003101"], RDFS.label, Literal("Male Organism")))
-
     base.add((PHB.NeomorphicStatement, RDF.type, OWL.Class))
     base.add((PHB.TransformationalSimpleStatement, RDF.type, OWL.Class))
     base.add((PHB.TransformationalComplexStatement, RDF.type, OWL.Class))
@@ -368,6 +364,7 @@ def handle_organism(
     g.add((org_uri, RDFS.label, Literal(org_label)))
     
     g.add((org_instance, RDF.type, org_uri))
+    g.add((org_instance, RDF.type, OWL.NamedIndividual))
     add_individual_triples(g, org_instance, org_label)
 
     return org_instance
@@ -512,8 +509,6 @@ def handle_variable_component(
     if not var_data:
         return None
 
-    
-
     # Salt UUID with Char_ID (when available) to create per-character instances
     var_label = var_data.get("Variable label", "Unnamed Variable")
     var_uri_str = var_data.get("Variable URI") or str(KB[var_label.replace(" ", "_")])
@@ -529,8 +524,9 @@ def handle_variable_component(
 
     if var_data.get("Variable URI"):
         var_uri = URIRef(var_data["Variable URI"])
-        g.add((var_instance_uri, RDF.type, var_uri))
+        g.add((var_uri, RDF.type, OWL.Class))
         g.add((var_uri, RDFS.label, Literal(var_label)))
+        g.add((var_instance_uri, RDF.type, var_uri))
 
     if var_data.get("Variable comment"):
         g.add((var_instance_uri, RDFS.comment, Literal(var_data["Variable comment"])))
@@ -604,6 +600,7 @@ def process_phenotype(
     char_uri = generate_uri("char", f"char_{char_id}")
     g.add((char_uri, RDF.type, CDAO["0000075"]))  # CDAO Character
     g.add((char_uri, RDFS.label, Literal(char_label)))
+    g.add((char_uri, RDF.type, OWL.NamedIndividual))
 
     # States: build state nodes and register allowed states per Character
     state_map_for_char = handle_states(g, row)
@@ -877,6 +874,7 @@ def build_cdao_matrix(
     g.add((matrix_uri, RDF.type, CDAO["0000056"]))  # CDAO Matrix
     g.add((matrix_uri, RDFS.label, Literal("matrix")))
     g.add((matrix_uri, DC.description, Literal("matrix description")))
+    g.add((matrix_uri, RDF.type, OWL.NamedIndividual))
 
     # TUs
     for taxon in nexus_matrix.taxon_namespace:
@@ -908,6 +906,7 @@ def build_cdao_matrix(
             # UUID-based TU (for consistency)
             tu_uri = generate_uri("tu", taxon.label)
 
+            g.add((cell_uri, RDF.type, OWL.NamedIndividual))
             g.add((cell_uri, RDF.type, CDAO["0000008"]))  # CDAO Cell
             g.add((cell_uri, CDAO["0000191"], tu_uri)) # CDAO belongs to TU
             g.add((cell_uri, CDAO["0000205"], char_uri)) # CDAO belongs to Character
@@ -1025,6 +1024,7 @@ def enrich_tu_graph(
 
     # TU assertions
     add_individual_triples(tu_graph, tu_uri, valid_label_html)
+    tu_graph.add((org_instance, RDF.type, OWL.NamedIndividual))
     tu_graph.add((org_instance, RO["0003301"], tu_uri)) # RO has role in modelling
     tu_graph.add((tu_uri, RDF.type, CDAO["0000138"]))  # CDAO Taxon Unit
     tu_graph.add((tu_uri, IAO["0000219"], sp_instance)) # TU denotes species instance
