@@ -311,7 +311,7 @@ def handle_species(
     # If we have an external ID (GBIF), link it
     if species_info.get("ID"):
         gbif_uri = URIRef(f"https://www.gbif.org/species/{species_info['ID']}")
-        sp_g.add((sp_instance, DWC.parentNameUsageID, Literal(species_info["ID"])))
+        sp_g.add((sp_instance, DWC.parentNameUsageID, Literal(f"GBIF:{species_info['ID']}")))
         sp_g.add((sp_instance, RDFS.seeAlso, gbif_uri))
 
     # Zoobank ID if available
@@ -651,7 +651,8 @@ def process_phenotype(
         sp_uri = generate_uri("sp", sp_label)
         sp_g.add((sp_uri, RDF.type, PHB.Species))
         sp_g.add((sp_uri, RDFS.label, Literal(sp_label)))
-        sp_g.add((sp_uri, DWC.parentNameUsageID, URIRef(f"https://www.gbif.org/species/{species_id}")))
+        sp_g.add((sp_uri, DWC.parentNameUsageID, Literal(f"GBIF:{species_id['ID']}")))
+        sp_g.add((sp_uri, RDFS.seeAlso, URIRef(f"https://www.gbif.org/species/{species_id}")))
         print(f"[DEBUG] Species graph for {sp_label} has {len(sp_g)} triples:")
         for s, p, o in sp_g:
             print(f"  {s} {p} {o}")
@@ -704,12 +705,20 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
     ttl_full = graph.serialize(format="turtle", encoding="utf-8").decode("utf-8")
     prefix_block = ttl_full.split("\n\n", 1)[0]
 
+    def _render_node(u):
+        """Render a node using prefixed names when possible; fallback to <IRI>. Literals are rendered with .n3()."""
+        try:
+            if isinstance(u, URIRef):
+                return graph.namespace_manager.normalizeUri(u)
+            return u.n3()
+        except Exception:
+            return f"<{u}>" if isinstance(u, URIRef) else u.n3()
+
     def _write_triple(f, s, p, o):
-        if isinstance(o, URIRef):
-            f.write(f"<{s}> <{p}> <{o}> .\n")
-        else:
-            # Literal or BNode
-            f.write(f"<{s}> <{p}> {o.n3()} .\n")
+        s_txt = _render_node(s)
+        p_txt = _render_node(p)
+        o_txt = _render_node(o)
+        f.write(f"{s_txt} {p_txt} {o_txt} .\n")
 
     # Derive local namespace string for "local class used as rdf:type object" fallback
     KB_NS = str(KB)
@@ -743,13 +752,49 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
 
         # === Classes ===
         f.write("### ==============================\n### Classes\n### ==============================\n\n")
+        # for s in sorted(class_nodes, key=lambda x: str(x)):
+            # for p, o in graph.predicate_objects(s):
+                # _write_triple(f, s, p, o)
+            # f.write("\n")
+
+        # Preferred predicate ordering within class blocks
+        ord_class_preds = [RDFS.label, RDF.type]
+
         for s in sorted(class_nodes, key=lambda x: str(x)):
-            for p, o in graph.predicate_objects(s):
-                _write_triple(f, s, p, o)
+            # Collect predicate-object pairs for this class subject
+            pos = list(graph.predicate_objects(s))
+            if not pos:
+                continue
+
+            # Sort by preferred order first, then by predicate IRI and object
+            def pred_rank(p):
+                try:
+                    return ord_class_preds.index(p)
+                except ValueError:
+                    return len(ord_class_preds)
+
+            pos.sort(key=lambda po: (pred_rank(po[0]), str(po[0]), str(po[1])))
+
+            # Per-class heading
+            f.write(f"### {_render_node(s)}\n")
+
+            # Emit compact Turtle block with semicolons and final period
+            subj_txt = _render_node(s)
+            for idx, (p, o) in enumerate(pos):
+                pred_txt = _render_node(p)
+                obj_txt = _render_node(o) if isinstance(o, URIRef) else o.n3()
+                is_last = (idx == len(pos) - 1)
+                if idx == 0:
+                    line = f"{subj_txt} {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                else:
+                    line = f"  {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                # Normalize spaces before terminators
+                line = line.replace('  .', ' .').replace('  ;', ' ;')
+                f.write(line + "\n")
             f.write("\n")
 
         # === Individuals (grouped by KB prefixes) ===
-        f.write("### ==============================\n### Individuals (grouped)\n### ==============================\n\n")
+        f.write("### ==============================\n### Individuals \n### ==============================\n\n")
 
         # Group by prefix buckets
         buckets = {
@@ -766,15 +811,68 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
             "## --- Other Individuals ---":  lambda u: True,  # fallback
         }
 
+        # Preferred predicate ordering within individual blocks
+        ord_idv_preds = [
+            RDFS.label,
+            RDF.type,
+            DWC.parentNameUsageID,
+            DWC.taxonID,
+            RDFS.comment,
+            RDFS.seeAlso,
+            BFO["0000051"],
+            PHB.has_organismal_component,
+            PHB.has_entity_component,
+            PHB.has_quality_component,
+            PHB.has_variable_component,
+            PHB.may_have_state,
+            PHB.has_characteristic,
+            PHB.refers_to_phenotype_statement,
+            CDAO["0000142"],
+            CDAO["0000184"],
+            CDAO["0000191"],
+            CDAO["0000205"],
+            CDAO["0000208"],
+            IAO["0000219"],
+            RO["0003301"]
+            ]
+
         remaining = set(individual_nodes)
         for header, pred in buckets.items():
             bucket_nodes = [u for u in remaining if pred(u)]
             if not bucket_nodes:
                 continue
             f.write(header + "\n\n")
+            # for s in sorted(bucket_nodes, key=lambda x: str(x)):
+                # for p, o in graph.predicate_objects(s):
+                    # _write_triple(f, s, p, o)
+                # f.write("\n")
             for s in sorted(bucket_nodes, key=lambda x: str(x)):
-                for p, o in graph.predicate_objects(s):
-                    _write_triple(f, s, p, o)
+                pos = list(graph.predicate_objects(s))
+                if not pos:
+                    continue
+
+                # Sort by preferred order first, then by predicate IRI and object
+                def pred_rank(p):
+                    try:
+                        return ord_idv_preds.index(p)
+                    except ValueError:
+                        return len(ord_idv_preds)
+
+                pos.sort(key=lambda po: (pred_rank(po[0]), str(po[0]), str(po[1])))
+
+                f.write(f"### {_render_node(s)}\n")
+
+                subj_txt = _render_node(s)
+                for idx, (p, o) in enumerate(pos):
+                    pred_txt = _render_node(p)
+                    obj_txt = _render_node(o)
+                    is_last = (idx == len(pos) - 1)
+                    if idx == 0:
+                        line = f"{subj_txt} {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                    else:
+                        line = f"  {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                    line = line.replace('  .', ' .').replace('  ;', ' ;')
+                    f.write(line + "\n")
                 f.write("\n")
             # Remove written nodes so they don't show again
             remaining -= set(bucket_nodes)
@@ -782,13 +880,44 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
         # === Properties ===
         f.write("### ==============================\n### Properties\n### ==============================\n\n")
 
+        ord_prop_preds = [RDFS.label, RDF.type]
+
         def write_prop_section(title: str, nodes: set):
             if not nodes:
                 return
             f.write(title + "\n\n")
+            # for s in sorted(nodes, key=lambda x: str(x)):
+                # for p, o in graph.predicate_objects(s):
+                    # _write_triple(f, s, p, o)
+                # f.write("\n")
+            
             for s in sorted(nodes, key=lambda x: str(x)):
-                for p, o in graph.predicate_objects(s):
-                    _write_triple(f, s, p, o)
+                pos = list(graph.predicate_objects(s))
+                if not pos:
+                    continue
+
+                # Sort by preferred order first, then by predicate IRI and object
+                def pred_rank(p):
+                    try:
+                        return ord_prop_preds.index(p)
+                    except ValueError:
+                        return len(ord_prop_preds)
+
+                pos.sort(key=lambda po: (pred_rank(po[0]), str(po[0]), str(po[1])))
+
+                f.write(f"### {_render_node(s)}\n")
+
+                subj_txt = _render_node(s)
+                for idx, (p, o) in enumerate(pos):
+                    pred_txt = _render_node(p)
+                    obj_txt = _render_node(o)
+                    is_last = (idx == len(pos) - 1)
+                    if idx == 0:
+                        line = f"{subj_txt} {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                    else:
+                        line = f"  {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                    line = line.replace('  .', ' .').replace('  ;', ' ;')
+                    f.write(line + "\n")
                 f.write("\n")
 
         write_prop_section("## --- ObjectProperties ---", object_properties)
@@ -797,10 +926,46 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
 
         # === Other Triples ===
         f.write("### ==============================\n### Other Triples\n### ==============================\n\n")
+        # for s, p, o in graph:
+            # if s in excluded_subjects:
+                # continue
+            # _write_triple(f, s, p, o)
+        
+        from collections import defaultdict
+
+        ord_oth_preds = [RDFS.label, RDF.type]
+
+        other_by_subject = defaultdict(list)
         for s, p, o in graph:
             if s in excluded_subjects:
                 continue
-            _write_triple(f, s, p, o)
+            other_by_subject[s].append((p, o))
+
+        for s in sorted(other_by_subject.keys(), key=lambda x: str(x)):
+            pos = sorted(other_by_subject[s], key=lambda po: (str(po[0]), str(po[1])))
+
+            # Sort by preferred order first, then by predicate IRI and object
+            def pred_rank(p):
+                try:
+                    return ord_oth_preds.index(p)
+                except ValueError:
+                    return len(ord_oth_preds)
+
+            pos.sort(key=lambda po: (pred_rank(po[0]), str(po[0]), str(po[1])))
+
+            f.write(f"### {_render_node(s)}\n")
+            subj_txt = _render_node(s)
+            for idx, (p, o) in enumerate(pos):
+                pred_txt = _render_node(p)
+                obj_txt = _render_node(o)
+                is_last = (idx == len(pos) - 1)
+                if idx == 0:
+                    line = f"{subj_txt} {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                else:
+                    line = f"  {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                line = line.replace('  .', ' .').replace('  ;', ' ;')
+                f.write(line + "\n")
+            f.write("\n")
 
 def visualize_graph(classes, individuals, edges, output_file="graph.svg"):
     g = AGraph(directed=True, strict=False, rankdir="LR")
