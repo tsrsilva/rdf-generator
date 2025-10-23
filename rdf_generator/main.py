@@ -7,7 +7,6 @@ import yaml
 import uuid
 from typing import Optional, Tuple, Dict, Any, List
 
-import argparse
 import dendropy
 from rdflib import Graph, Namespace, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL
@@ -151,7 +150,7 @@ def build_base_graph() -> Graph:
     base = Graph()
     bind_namespaces(base)
 
-    # minimal class declarations used across character graphs
+    # Minimal class declarations used across character graphs
     base.add((UBERON["0007023"], RDF.type, OWL.Class))
     base.add((UBERON["0003100"], RDF.type, OWL.Class))
     base.add((UBERON["0003101"], RDF.type, OWL.Class))
@@ -163,7 +162,34 @@ def build_base_graph() -> Graph:
     base.add((PHB.NeomorphicStatement, RDFS.label, Literal("Neomorphic Statement")))
     base.add((PHB.TransformationalSimpleStatement, RDFS.label, Literal("Transformational Simple Statement")))
     base.add((PHB.TransformationalComplexStatement, RDFS.label, Literal("Transformational Complex Statement")))
-    
+
+    # Property declarations
+    ## Object Properties
+    base.add((PHB.has_organismal_component, RDF.type, OWL.ObjectProperty))
+    base.add((PHB.has_entity_component, RDF.type, OWL.ObjectProperty))
+    base.add((PHB.has_variable_component, RDF.type, OWL.ObjectProperty))
+    base.add((PHB.has_quality_component, RDF.type, OWL.ObjectProperty))
+    base.add((PHB.has_characteristic, RDF.type, OWL.ObjectProperty))
+    base.add((PHB.refers_to_phenotype_statement, RDF.type, OWL.ObjectProperty))
+    base.add((CDAO["0000142"], RDF.type, OWL.ObjectProperty))
+    base.add((CDAO["0000184"], RDF.type, OWL.ObjectProperty))
+    base.add((CDAO["0000191"], RDF.type, OWL.ObjectProperty))
+    base.add((CDAO["0000205"], RDF.type, OWL.ObjectProperty))
+    base.add((CDAO["0000208"], RDF.type, OWL.ObjectProperty))
+    base.add((BFO["0000051"], RDF.type, OWL.ObjectProperty))
+    base.add((RO["0003301"], RDF.type, OWL.ObjectProperty))
+    base.add((IAO["0000219"], RDF.type, OWL.ObjectProperty))
+
+    ## Datatype Properties
+    base.add((DC.description, RDF.type, OWL.DatatypeProperty))
+    base.add((DWC.taxonID, RDF.type, OWL.DatatypeProperty))
+    base.add((DWC.parentNameUsageID, RDF.type, OWL.DatatypeProperty))
+
+    ## Annotation Properties
+    base.add((RDFS.label, RDF.type, OWL.AnnotationProperty))
+    base.add((RDFS.comment, RDF.type, OWL.AnnotationProperty))
+    base.add((RDFS.seeAlso, RDF.type, OWL.AnnotationProperty))
+
     return base
 
 # ---------- Load inputs (data, matrix, shapes) ----------
@@ -285,7 +311,8 @@ def handle_species(
     # If we have an external ID (GBIF), link it
     if species_info.get("ID"):
         gbif_uri = URIRef(f"https://www.gbif.org/species/{species_info['ID']}")
-        sp_g.add((sp_instance, DWC.parentNameUsageID, gbif_uri))
+        sp_g.add((sp_instance, DWC.parentNameUsageID, Literal(species_info["ID"])))
+        sp_g.add((sp_instance, RDFS.seeAlso, gbif_uri))
 
     # Zoobank ID if available
     if species_info.get("zoobank_identifier"):
