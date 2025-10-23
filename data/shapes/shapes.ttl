@@ -1,0 +1,309 @@
+# SPDX-FileCopyrightText: 2025 Thiago S. R. Silva, Diego S. Porto
+# SPDX-License-Identifier: MIT
+
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix phb: <http://www.phenobees.org/ontology#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix cdao: <http://purl.obolibrary.org/obo/CDAO_> .
+@prefix bfo: <http://purl.obolibrary.org/obo/BFO_> .
+@prefix iao: <http://purl.obolibrary.org/obo/IAO_> .
+@prefix dwc: <http://rs.tdwg.org/dwc/terms/> .
+@prefix dc: <http://purl.org/dc/terms/> .
+@prefix txr: <http://purl.obolibrary.org/obo/TAXRANK_> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+#############################
+# Phenotype Statement Shapes
+#############################
+
+# Neomorphic: No variable
+
+phb:NeomorphicPhenotypeShape
+    a sh:NodeShape ;
+    sh:targetClass phb:NeomorphicPhenotypeStatement ;
+    
+    sh:property [
+        sh:path phb:has_organismal_component ;
+        sh:minCount 1 ;
+    ] ;
+    
+    sh:property [
+        sh:path phb:has_entity_component ;
+        sh:minCount 1 ;
+    ] ;
+
+    sh:property [
+        sh:path phb:has_variable_component ;
+        sh:maxCount 0 ; 
+    ] .
+
+# Transformational Simple: variable present, no comment
+
+phb:TransformationalSimplePhenotypeShape
+    a sh:NodeShape ;
+    sh:targetClass phb:TransformationalSimplePhenotypeStatement ;
+
+    sh:property [
+        sh:path phb:has_organismal_component ;
+        sh:minCount 1 ;
+    ] ;
+
+    sh:property [
+        sh:path phb:has_entity_component ;
+        sh:minCount 1 ;
+    ] ;
+
+    sh:property [
+        sh:path phb:has_variable_component ;
+        sh:minCount 1 ;
+        sh:node phb:VariableNodeShape ;
+    ] .
+
+# Transformational Complex: variable + comment required
+
+phb:TransformationalComplexPhenotypeShape
+    a sh:NodeShape ;
+    sh:targetClass phb:TransformationalComplexPhenotypeStatement ;
+
+    sh:property [
+        sh:path phb:has_organismal_component ;
+        sh:minCount 1 ;
+    ] ;
+
+    sh:property [
+        sh:path phb:has_entity_component ;
+        sh:minCount 1 ;
+    ] ;
+
+    sh:property [
+        sh:path phb:has_variable_component ;
+        sh:minCount 1 ;
+        sh:node phb:VariableNodeShapeWithComment ;
+    ] .
+
+#######################
+# Variable Node Shapes
+#######################
+
+# Variables used in simple statements: label required, no comment
+
+phb:VariableNodeShape
+  a sh:NodeShape ;
+  sh:targetObjectsOf phb:has_variable_component ;
+
+  sh:property [
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+  ] ;
+
+  sh:property [
+    sh:path rdfs:comment ;
+    sh:maxCount 1 ;
+
+  ] .
+
+# Variables used in complex statements: label + comment required
+
+phb:VariableNodeShapeWithComment
+  a sh:NodeShape ;
+  sh:targetObjectsOf phb:has_variable_component ;
+
+  sh:property [
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+  ] ;
+
+  sh:property [
+    sh:path rdfs:comment ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
+  ] .
+
+################
+# Locator Shape
+################
+
+# Locator individuals: label required; optional chaining via BFO:0000051
+# (to another locator or to a variable for last-locator→variable link)
+
+phb:LocatorNodeShape
+  a sh:NodeShape ;
+  sh:targetObjectsOf phb:has_entity_component ;
+
+  sh:property [
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+  ] ;
+
+  sh:property [
+    sh:path bfo:0000051 ;
+    sh:minCount 0 ;
+  ] .
+
+#################
+# Organism Shape
+#################
+
+# Organism individuals connected via phb:has_organismal_component: label required
+phb:OrganismNodeShape
+
+  a sh:NodeShape ;
+  sh:targetObjectsOf phb:has_organismal_component ;
+
+  sh:property [
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+  ] .
+
+#################
+# Character Shape
+#################
+
+# Characters (CDAO:0000075): label required; may have phb:may_have_state
+
+phb:CharacterShape
+  a sh:NodeShape ;
+  sh:targetClass cdao:0000075 ;
+
+  sh:property [
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+  ] ;
+  
+  sh:property [
+    sh:path phb:may_have_state ;
+    sh:minCount 0 ;
+  ] .
+
+#############
+# State Shape
+#############
+
+# States (CDAO:0000045): label required
+
+phb:StateNodeShape
+  a sh:NodeShape ;
+  sh:targetClass cdao:0000045 ;
+
+  sh:property [
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+  ] .
+
+#############
+# Cell Shape
+#############
+
+# Cells (CDAO:0000008):
+# - belongs to TU (CDAO:0000191) and Character (CDAO:0000205)
+# - may have state (CDAO:0000184)
+# - must refer to phenotype statement (phb:refers_to_phenotype_statement)
+
+phb:CellShape
+  a sh:NodeShape ;
+  sh:targetClass cdao:0000008 ;
+
+  sh:property [
+    sh:path cdao:0000191 ; # belongsTo TU
+    sh:minCount 1 ;
+  ] ;
+
+  sh:property [
+    sh:path cdao:0000205 ; # belongsTo Character
+    sh:minCount 1 ;
+  ] ;
+
+  sh:property [
+    sh:path cdao:0000184 ; # has_state
+    sh:minCount 0 ;
+    sh:node phb:StateNodeShape ;
+  ] ;
+
+  sh:property [
+    sh:path phb:refers_to_phenotype_statement ;
+    sh:minCount 1 ;
+  ] .
+
+###############
+# Matrix Shape
+###############
+
+# Matrix (CDAO:0000056):
+# - label, dc:description
+# - has TU (CDAO:0000208) and has Character (CDAO:0000142)
+
+phb:MatrixShape
+  a sh:NodeShape ;
+  sh:targetClass cdao:0000056 ;
+
+  sh:property [
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+  ] ;
+
+  sh:property [
+    sh:path dc:description ;
+    sh:minCount 1 ;
+  ] ;
+
+  sh:property [
+    sh:path cdao:0000208 ; # has TU
+    sh:minCount 1 ;
+  ] ;
+
+  sh:property [
+    sh:path cdao:0000142 ; # has Character
+    sh:minCount 1 ;
+  ] .
+
+############
+# TU Shape
+############
+
+# TU individuals (CDAO:0000138) must denote a species instance (IAO:0000219)
+
+phb:TUShape
+  a sh:NodeShape ;
+  sh:targetClass cdao:0000138 ;
+
+  sh:property [
+    sh:path iao:0000219 ; # denotes species instance
+    sh:minCount 1 ;
+  ] .
+
+###################
+# Species Shapes
+###################
+
+# Species instance: reached as object of iao:0000219; label required; DwC IDs optional
+
+phb:SpeciesInstanceShape
+  a sh:NodeShape ;
+  sh:targetObjectsOf iao:0000219 ;
+
+  sh:property [
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+  ] ;
+
+  sh:property [
+    sh:path dwc:parentNameUsageID ;
+    sh:minCount 0 ;
+  ] ;
+
+  sh:property [
+    sh:path dwc:taxonID ;
+    sh:minCount 0 ;
+  ] .
+
+# Species concept (class) typed as TXR:0000006: label required
+
+phb:SpeciesConceptShape
+  a sh:NodeShape ;
+  sh:targetClass txr:0000006 ;
+
+  sh:property [
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+  ] .
