@@ -475,7 +475,7 @@ def handle_organism_and_locators(
             print(f"[WARN] Unexpected locator type {type(locator)} for Char_ID {data.get('Char_ID')}")
             continue
 
-        current_instance = handle_locator(g, locator, previous_instance)
+        current_instance = handle_locator(g, locator, previous_instance, char_id=data.get("Char_ID"))
         if current_instance:
             locators.append(current_instance)
             previous_instance = current_instance  # chain continues
@@ -497,7 +497,7 @@ def compute_default_organism_instance_uri_from_dataset(
         char_id = row.get("Char_ID")
         if org_label and char_id:
             seed = f"{char_id}::{org_label.strip().lower()}"
-            return generate_uri("org-", seed)
+            return generate_uri("org", seed)
     return None
 
 def handle_variable_component(
@@ -729,13 +729,16 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
 
         # Group by prefix buckets
         buckets = {
-            "## --- KB#CHAR instances ---": lambda u: str(u).startswith(f"{KB_NS}char-"),
+            "## --- KB#SP instances ---": lambda u: str(u).startswith(f"{KB_NS}sp-"),
             "## --- KB#PHE instances ---":  lambda u: str(u).startswith(f"{KB_NS}phe-"),
-            "## --- KB#TU instances ---":   lambda u: str(u).startswith(f"{KB_NS}tu-"),
+            "## --- KB#ORG instances ---": lambda u: str(u).startswith(f"{KB_NS}org-"),
             "## --- KB#LOC instances ---":  lambda u: str(u).startswith(f"{KB_NS}loc-"),
             "## --- KB#VAR instances ---":  lambda u: str(u).startswith(f"{KB_NS}var-"),
-            "## --- KB#STA (state) ---":    lambda u: str(u).startswith(f"{KB_NS}sta-"),
-            "## --- KB#SP (species inst) ---": lambda u: str(u).startswith(f"{KB_NS}sp-"),
+            "## --- KB#STA instances ---":    lambda u: str(u).startswith(f"{KB_NS}sta-"),
+            "## --- KB#MX instances ---": lambda u: str(u).startswith(f"{KB_NS}mx-"),
+            "## --- KB#CHAR instances ---": lambda u: str(u).startswith(f"{KB_NS}char-"),
+            "## --- KB#TU instances ---":   lambda u: str(u).startswith(f"{KB_NS}tu-"),       
+            "## --- KB#CELL instances ---": lambda u: str(u).startswith(f"{KB_NS}cell-"),
             "## --- Other Individuals ---":  lambda u: True,  # fallback
         }
 
@@ -965,6 +968,9 @@ def build_cdao_matrix(
                 var_instance = handle_variable_component(g, char_data, char_id=char_id)
                 if var_instance:
                     g.add((ph_uri, PHB.has_variable_component, var_instance))
+
+                if var_instance and locator_instances:
+                    g.add((locator_instances[-1], BFO["0000051"], var_instance))
 
                 # Link exactly one state (if resolvable) to the cell phenotype instance
                 if chosen_state_node is not None:
