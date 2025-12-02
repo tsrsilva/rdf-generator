@@ -90,6 +90,7 @@ phb:TransformationalComplexPhenotypeShape
 
 phb:VariableNodeShape
   a sh:NodeShape ;
+  sh:targetClass phb:TransformationalSimplePhenotypeStatement ;
   sh:targetObjectsOf phb:has_variable_component ;
 
   sh:property [
@@ -99,14 +100,14 @@ phb:VariableNodeShape
 
   sh:property [
     sh:path rdfs:comment ;
-    sh:maxCount 1 ;
-
+    sh:maxCount 0 ;
   ] .
 
 # Variables used in complex statements: label + comment required
 
 phb:VariableNodeShapeWithComment
   a sh:NodeShape ;
+  sh:targetClass phb:TransformationalComplexPhenotypeStatement ;
   sh:targetObjectsOf phb:has_variable_component ;
 
   sh:property [
@@ -117,7 +118,6 @@ phb:VariableNodeShapeWithComment
   sh:property [
     sh:path rdfs:comment ;
     sh:minCount 1 ;
-    sh:maxCount 1 ;
   ] .
 
 ################

@@ -155,6 +155,8 @@ def build_base_graph() -> Graph:
     base.add((UBERON["0003100"], RDF.type, OWL.Class))
     base.add((UBERON["0003101"], RDF.type, OWL.Class))
 
+    base.add((UBERON["0007023"], RDFS.label, Literal("adult organism")))
+
     base.add((PHB.NeomorphicStatement, RDF.type, OWL.Class))
     base.add((PHB.TransformationalSimpleStatement, RDF.type, OWL.Class))
     base.add((PHB.TransformationalComplexStatement, RDF.type, OWL.Class))
@@ -169,7 +171,6 @@ def build_base_graph() -> Graph:
     base.add((PHB.has_entity_component, RDF.type, OWL.ObjectProperty))
     base.add((PHB.has_variable_component, RDF.type, OWL.ObjectProperty))
     base.add((PHB.has_quality_component, RDF.type, OWL.ObjectProperty))
-    base.add((PHB.has_characteristic, RDF.type, OWL.ObjectProperty))
     base.add((PHB.refers_to_phenotype_statement, RDF.type, OWL.ObjectProperty))
     base.add((CDAO["0000142"], RDF.type, OWL.ObjectProperty))
     base.add((CDAO["0000184"], RDF.type, OWL.ObjectProperty))
@@ -177,6 +178,7 @@ def build_base_graph() -> Graph:
     base.add((CDAO["0000205"], RDF.type, OWL.ObjectProperty))
     base.add((CDAO["0000208"], RDF.type, OWL.ObjectProperty))
     base.add((BFO["0000051"], RDF.type, OWL.ObjectProperty))
+    base.add((RO["0000053"], RDF.type, OWL.ObjectProperty)) # has_characteristic
     base.add((RO["0003301"], RDF.type, OWL.ObjectProperty))
     base.add((IAO["0000219"], RDF.type, OWL.ObjectProperty))
 
@@ -311,7 +313,7 @@ def handle_species(
     # If we have an external ID (GBIF), link it
     if species_info.get("ID"):
         gbif_uri = URIRef(f"https://www.gbif.org/species/{species_info['ID']}")
-        sp_g.add((sp_instance, DWC.parentNameUsageID, Literal(species_info["ID"])))
+        sp_g.add((sp_instance, DWC.parentNameUsageID, Literal(f"GBIF:{species_info['ID']}")))
         sp_g.add((sp_instance, RDFS.seeAlso, gbif_uri))
 
     # Zoobank ID if available
@@ -377,7 +379,7 @@ def handle_organism(
     when the organism label is identical across rows.
     """
 
-    org_label = org_data.get("Label", "Unknown organism")
+    org_label = org_data.get("Label")
     org_uri_str = org_data.get("URI") or str(KB[org_label.replace(" ", "_")])
     org_uri = URIRef(org_uri_str)
 
@@ -544,8 +546,6 @@ def handle_variable_component(
         f"{char_id}::{var_label.strip().lower()}" if char_id else var_label.strip().lower()
     )
     var_instance_uri = generate_uri("var", var_uuid_seed)
-
-    # var_instance_uri = generate_uri("var", f"{var_data.get('Variable URI', var_label.strip().lower())}")
     
     add_individual_triples(g, var_instance_uri, var_label)
 
@@ -559,6 +559,44 @@ def handle_variable_component(
         g.add((var_instance_uri, RDFS.comment, Literal(var_data["Variable comment"])))
 
     return var_instance_uri
+
+def handle_quality(
+    g: Graph,
+    data: Dict[str, Any]
+    # final_component: Optional[URIRef] = None
+) -> Dict[int, str]:
+    """
+    Add RDF triples for 'Qualities'. Returns a map of index -> quality node URI (str).
+    Negations like "not X" or "absent X" are normalized into positive
+    absence-style labels (e.g., "X absent"), avoiding owl:complementOf.
+    """
+    quality_map_for_char: Dict[int, str] = {}
+
+    for quality_index, quality in enumerate(data.get("States", []) or []):
+        label = next((v for k, v in quality.items() if 'label' in k.lower()), "unknown").strip()
+        uri = next((v for k, v in quality.items() if 'uri' in k.lower() and v), None)
+
+        norm_label = label.lower()
+
+        # Detect negations
+        if norm_label.startswith("not "):
+            base_label = label[4:].strip()
+            label = f"not {base_label}"
+
+        # UUID for quality
+        quality_node = generate_uri("qua", f"{data['Char_ID']}_{uri or label.lower()}")
+
+        g.add((quality_node, RDF.type, PATO["0000001"]))  # PATO Quality
+
+        # Type assignment
+        if uri:
+            g.add((quality_node, RDF.type, URIRef(uri)))
+        add_individual_triples(g, quality_node, label)
+
+        # Link quality to character
+        quality_map_for_char[quality_index] = str(quality_node)
+
+    return quality_map_for_char
 
 def handle_states(
     g: Graph,
@@ -617,6 +655,7 @@ def process_phenotype(
     Returns:
         A tuple of:
           - char_uri: URIRef for the Character class.
+          - quality_map_for_char: Mapping of quality indices to KB URIs.
           - state_map_for_char: Mapping of state indices to KB URIs.
           - sp_g: Species-specific RDFLib Graph (possibly empty).
     """
@@ -633,10 +672,10 @@ def process_phenotype(
     state_map_for_char = handle_states(g, row)
 
     # Attach Variable component at the character-level template (unique per Char_ID)
-    var_instance_char = handle_variable_component(g, row, char_id=char_id)
-    if var_instance_char:
-        g.add((char_uri, PHB.has_variable_component, var_instance_char))
-    
+    # var_instance_char = handle_variable_component(g, row, char_id=char_id)
+    # if var_instance_char:
+        # g.add((char_uri, PHB.has_variable_component, var_instance_char))
+
     # Catalog allowed states at the Character level only
     for idx, state_uri in state_map_for_char.items():
 
@@ -704,12 +743,23 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
     ttl_full = graph.serialize(format="turtle", encoding="utf-8").decode("utf-8")
     prefix_block = ttl_full.split("\n\n", 1)[0]
 
+    def _render_node(u):
+            """
+            Render a node using prefixed names when possible; fallback to <IRI>.
+            Literals are rendered with .n3().
+            """
+            try:
+                if isinstance(u, URIRef):
+                    return graph.namespace_manager.normalizeUri(u)
+                return u.n3()
+            except Exception:
+                return f"<{u}>" if isinstance(u, URIRef) else u.n3()  
+
     def _write_triple(f, s, p, o):
-        if isinstance(o, URIRef):
-            f.write(f"<{s}> <{p}> <{o}> .\n")
-        else:
-            # Literal or BNode
-            f.write(f"<{s}> <{p}> {o.n3()} .\n")
+        s_txt = _render_node(s)
+        p_txt = _render_node(p)
+        o_txt = _render_node(o)
+        f.write(f"{s_txt} {p_txt} {o_txt} .\n")
 
     # Derive local namespace string for "local class used as rdf:type object" fallback
     KB_NS = str(KB)
@@ -743,38 +793,120 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
 
         # === Classes ===
         f.write("### ==============================\n### Classes\n### ==============================\n\n")
+        # === Classes ===
+
+        # Preferred predicate ordering within class blocks
+        org_preferred_preds = [RDFS.label, RDF.type]
+
         for s in sorted(class_nodes, key=lambda x: str(x)):
-            for p, o in graph.predicate_objects(s):
-                _write_triple(f, s, p, o)
+            # Collect predicate-object pairs for this class subject
+            pos = list(graph.predicate_objects(s))
+            if not pos:
+                continue
+
+            # Sort by preferred order first, then by predicate IRI and object
+            def pred_rank(p):
+                try:
+                    return org_preferred_preds.index(p)
+                except ValueError:
+                    return len(org_preferred_preds)
+
+            pos.sort(key=lambda po: (pred_rank(po[0]), str(po[0]), str(po[1])))
+
+            # Per-class heading
+            f.write(f"### {_render_node(s)}\n")
+
+            # Emit compact Turtle block with semicolons and final period
+            subj_txt = _render_node(s)
+            for idx, (p, o) in enumerate(pos):
+                pred_txt = _render_node(p)
+                obj_txt = _render_node(o) if isinstance(o, URIRef) else o.n3()
+                is_last = (idx == len(pos) - 1)
+                if idx == 0:
+                    line = f"{subj_txt} {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                else:
+                    line = f"  {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                # Normalize spaces before terminators
+                line = line.replace('  .', ' .').replace('  ;', ' ;')
+                f.write(line + "\n")
             f.write("\n")
 
         # === Individuals (grouped by KB prefixes) ===
-        f.write("### ==============================\n### Individuals (grouped)\n### ==============================\n\n")
+        f.write("### ==============================\n### Individuals\n### ==============================\n\n")
 
         # Group by prefix buckets
         buckets = {
-            "## --- KB#SP instances ---": lambda u: str(u).startswith(f"{KB_NS}sp-"),
-            "## --- KB#PHE instances ---":  lambda u: str(u).startswith(f"{KB_NS}phe-"),
-            "## --- KB#ORG instances ---": lambda u: str(u).startswith(f"{KB_NS}org-"),
-            "## --- KB#LOC instances ---":  lambda u: str(u).startswith(f"{KB_NS}loc-"),
-            "## --- KB#VAR instances ---":  lambda u: str(u).startswith(f"{KB_NS}var-"),
-            "## --- KB#STA instances ---":    lambda u: str(u).startswith(f"{KB_NS}sta-"),
-            "## --- KB#MX instances ---": lambda u: str(u).startswith(f"{KB_NS}mx-"),
-            "## --- KB#CHAR instances ---": lambda u: str(u).startswith(f"{KB_NS}char-"),
-            "## --- KB#TU instances ---":   lambda u: str(u).startswith(f"{KB_NS}tu-"),       
-            "## --- KB#CELL instances ---": lambda u: str(u).startswith(f"{KB_NS}cell-"),
+            "## --- Species instances ---": lambda u: str(u).startswith(f"{KB_NS}sp-"),
+            "## --- Phenotype instances ---":  lambda u: str(u).startswith(f"{KB_NS}phe-"),
+            "## --- Organism instances ---": lambda u: str(u).startswith(f"{KB_NS}org-"),
+            "## --- Locator instances ---":  lambda u: str(u).startswith(f"{KB_NS}loc-"),
+            "## --- Variable instances ---":  lambda u: str(u).startswith(f"{KB_NS}var-"),
+            "## --- State instances ---":    lambda u: str(u).startswith(f"{KB_NS}sta-"),
+            "## --- Matrix instances ---": lambda u: str(u).startswith(f"{KB_NS}mx-"),
+            "## --- Character instances ---": lambda u: str(u).startswith(f"{KB_NS}char-"),
+            "## --- TU instances ---":   lambda u: str(u).startswith(f"{KB_NS}tu-"),       
+            "## --- Cell instances ---": lambda u: str(u).startswith(f"{KB_NS}cell-"),
             "## --- Other Individuals ---":  lambda u: True,  # fallback
         }
+
+        idv_preferred_preds = [
+            RDFS.label, 
+            RDF.type, 
+            DWC.parentNameUsageID, 
+            RDFS.seeAlso,
+            PHB.has_organismal_component,
+            PHB.has_entity_component,
+            PHB.has_variable_component,
+            PHB.has_quality_component,
+            PHB.may_have_state,
+            # PHB.has_characteristic,
+            PHB.refers_to_phenotype_statement,
+            BFO["0000051"],
+            RO["0000053"],
+            RO["0003301"],
+            IAO["0000219"],
+            CDAO["0000184"],
+            CDAO["0000191"],
+            CDAO["0000205"],
+            CDAO["0000142"],
+            CDAO["0000208"]
+        ]
 
         remaining = set(individual_nodes)
         for header, pred in buckets.items():
             bucket_nodes = [u for u in remaining if pred(u)]
             if not bucket_nodes:
                 continue
+
+            # Write bucket header
             f.write(header + "\n\n")
             for s in sorted(bucket_nodes, key=lambda x: str(x)):
-                for p, o in graph.predicate_objects(s):
-                    _write_triple(f, s, p, o)
+                pos = list(graph.predicate_objects(s))
+                if not pos:
+                    continue
+
+                # Sort by preferred order first, then by predicate IRI and object
+                def pred_rank(p):
+                    try:
+                        return idv_preferred_preds.index(p)
+                    except ValueError:
+                        return len(idv_preferred_preds)
+
+                pos.sort(key=lambda po: (pred_rank(po[0]), str(po[0]), str(po[1])))
+
+                f.write(f"### {_render_node(s)}\n")
+
+                subj_txt = _render_node(s)
+                for idx, (p, o) in enumerate(pos):
+                    pred_txt = _render_node(p)
+                    obj_txt = _render_node(o)
+                    is_last = (idx == len(pos) - 1)
+                    if idx == 0:
+                        line = f"{subj_txt} {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                    else:
+                        line = f"  {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                    line = line.replace('  .', ' .').replace('  ;', ' ;')
+                    f.write(line + "\n")
                 f.write("\n")
             # Remove written nodes so they don't show again
             remaining -= set(bucket_nodes)
@@ -782,13 +914,37 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
         # === Properties ===
         f.write("### ==============================\n### Properties\n### ==============================\n\n")
 
+        prp_preferred_preds = [RDFS.label, RDF.type]
+
         def write_prop_section(title: str, nodes: set):
             if not nodes:
                 return
+
+            # Sort by preferred order first, then by predicate IRI and object
+            def pred_rank(p):
+                try:
+                    return prp_preferred_preds.index(p)
+                except ValueError:
+                    return len(prp_preferred_preds)
+
+            # Write section title
             f.write(title + "\n\n")
             for s in sorted(nodes, key=lambda x: str(x)):
-                for p, o in graph.predicate_objects(s):
-                    _write_triple(f, s, p, o)
+                pos = list(graph.predicate_objects(s))
+                if not pos:
+                    continue
+
+                subj_txt = _render_node(s)
+                for idx, (p, o) in enumerate(pos):
+                    pred_txt = _render_node(p)
+                    obj_txt = _render_node(o)
+                    is_last = (idx == len(pos) - 1)
+                    if idx == 0:
+                        line = f"{subj_txt} {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                    else:
+                        line = f"  {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                    line = line.replace('  .', ' .').replace('  ;', ' ;')
+                    f.write(line + "\n")
                 f.write("\n")
 
         write_prop_section("## --- ObjectProperties ---", object_properties)
@@ -797,10 +953,29 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
 
         # === Other Triples ===
         f.write("### ==============================\n### Other Triples\n### ==============================\n\n")
+        from collections import defaultdict
+
+        other_by_subject = defaultdict(list)
         for s, p, o in graph:
             if s in excluded_subjects:
                 continue
-            _write_triple(f, s, p, o)
+            other_by_subject[s].append((p, o))
+
+        for s in sorted(other_by_subject.keys(), key=lambda x: str(x)):
+            pos = sorted(other_by_subject[s], key=lambda po: (str(po[0]), str(po[1])))
+            f.write(f"### {_render_node(s)}\n")
+            subj_txt = _render_node(s)
+            for idx, (p, o) in enumerate(pos):
+                pred_txt = _render_node(p)
+                obj_txt = _render_node(o)
+                is_last = (idx == len(pos) - 1)
+                if idx == 0:
+                    line = f"{subj_txt} {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                else:
+                    line = f"  {pred_txt} {obj_txt} {' .' if is_last else ' ;'}"
+                line = line.replace('  .', ' .').replace('  ;', ' ;')
+                f.write(line + "\n")
+            f.write("\n")
 
 def visualize_graph(classes, individuals, edges, output_file="graph.svg"):
     g = AGraph(directed=True, strict=False, rankdir="LR")
@@ -879,6 +1054,7 @@ def build_cdao_matrix(
     nexus_matrix,
     dataset,
     char_ids_in_order: List[str],
+    char_quality_mapping: Dict[str, Dict[int, str]],
     char_state_mapping: Dict[str, Dict[int, str]]
 ) -> Tuple[Graph, URIRef]:
     """
@@ -898,7 +1074,7 @@ def build_cdao_matrix(
 
     # Create matrix URI
     matrix_uri = URIRef(f"http://phenobees.org/kb#mx-{uuid.uuid4().hex[:8]}")
-    g.add((matrix_uri, RDF.type, CDAO["0000056"]))  # CDAO Matrix
+    g.add((matrix_uri, RDF.type, CDAO["0000056"]))  # CDAO Matrix/CharacterStateDataMatrix
     g.add((matrix_uri, RDFS.label, Literal("matrix")))
     g.add((matrix_uri, DC.description, Literal("matrix description")))
     g.add((matrix_uri, RDF.type, OWL.NamedIndividual))
@@ -915,6 +1091,10 @@ def build_cdao_matrix(
         if not char_data:
             continue  # skip if no matching row
 
+        # Precompute quality nodes for this character once and register mapping
+        quality_map_for_char = handle_quality(g, char_data)
+        char_quality_mapping[char_id] = quality_map_for_char
+
         # Process phenotype template (character-level; no state attachment here)
         char_uri, state_map, sp_g = process_phenotype(g, char_data)
 
@@ -923,7 +1103,7 @@ def build_cdao_matrix(
             g += sp_g
 
         # Link character into matrix
-        g.add((matrix_uri, CDAO["0000142"], char_uri)) # CDAO has character
+        g.add((matrix_uri, CDAO["0000142"], char_uri))  # CDAO has character
 
         # Cells (taxon x character)
         for taxon in nexus_matrix.taxon_namespace:
@@ -935,8 +1115,8 @@ def build_cdao_matrix(
 
             g.add((cell_uri, RDF.type, OWL.NamedIndividual))
             g.add((cell_uri, RDF.type, CDAO["0000008"]))  # CDAO Cell
-            g.add((cell_uri, CDAO["0000191"], tu_uri)) # CDAO belongs to TU
-            g.add((cell_uri, CDAO["0000205"], char_uri)) # CDAO belongs to Character
+            g.add((cell_uri, CDAO["0000191"], tu_uri))    # CDAO belongs to TU
+            g.add((cell_uri, CDAO["0000205"], char_uri))  # CDAO belongs to Character
 
             # Resolve the state for this specific cell
             cell_value = nexus_matrix[taxon][char_index]
@@ -998,17 +1178,33 @@ def build_cdao_matrix(
                 if var_instance and locator_instances:
                     g.add((locator_instances[-1], BFO["0000051"], var_instance))
 
-                # Link exactly one state (if resolvable) to the cell phenotype instance
-                if chosen_state_node is not None:
-                    g.add((ph_uri, PHB.has_quality_component, chosen_state_node))
+                # Unify quality resolution: use the same index as state_symbol, or '?' → unknown quality
+                chosen_quality_node: Optional[URIRef] = None
+                if state_symbol == '?':
+                    unknown_q = generate_uri("unknown_quality", f"{char_id}_unknown")
+                    add_individual_triples(g, unknown_q, "unknown")
+                    chosen_quality_node = unknown_q
+                elif state_symbol and state_symbol != '-':
+                    try:
+                        q_index = int(state_symbol)
+                        q_uri_str = quality_map_for_char.get(q_index)
+                        if q_uri_str:
+                            chosen_quality_node = URIRef(q_uri_str)
+                    except ValueError:
+                        pass  # unsupported polymorphic or non-integer state symbol
 
-                    # Connect either Variable (preferred) or last Locator to the state via has_characteristic
+                if chosen_quality_node is not None:
+                    # Connect either Variable (preferred) or last Locator to the quality via has_quality_component
                     if var_instance is not None:
-                        g.add((var_instance, PHB.has_characteristic, chosen_state_node))
+                        g.add((var_instance, RO["0000053"], chosen_quality_node))
+                        g.add((ph_uri, PHB.has_quality_component, chosen_quality_node))
                     elif locator_instances:
                         last_locator = locator_instances[-1]
-                        g.add((last_locator, PHB.has_characteristic, chosen_state_node))
+                        g.add((last_locator, RO["0000053"], chosen_quality_node))
+                        g.add((ph_uri, PHB.has_quality_component, chosen_quality_node))
 
+                # Link exactly one state (if resolvable) to the cell phenotype instance
+                if chosen_state_node is not None:
                     # Cell also points to the state
                     g.add((cell_uri, CDAO["0000184"], chosen_state_node))  # Cell has_state
 
@@ -1181,11 +1377,14 @@ def main():
         validation_dir=DIR_VALIDATION
     )
 
+    char_quality_mapping: Dict[str, Dict[int, str]] = {}
+
     print("\n=== Building CDAO matrix graph (shared pipeline) ===")
     matrix_graph, matrix_uri = build_cdao_matrix(
     nexus_matrix=char_matrix,
     dataset=dataset,
     char_ids_in_order=char_ids_in_order,
+    char_quality_mapping=char_quality_mapping,
     char_state_mapping=char_state_mapping
     )
     
@@ -1319,7 +1518,8 @@ def build_combined_visualization(
     PH_has_var = PHB.has_variable_component
     PH_has_qual = PHB.has_quality_component
     PH_refers_pheno = PHB.refers_to_phenotype_statement
-    PH_has_charac = PHB.has_characteristic
+
+    RO_has_charac = RO["0000053"]
 
     IAO_denotes = IAO["0000219"]
 
@@ -1454,12 +1654,12 @@ def build_combined_visualization(
         for st in g.objects(ph, PH_has_qual):
             add_edge(ph, st, "hasQuality")
 
-    # Variable/Locator characteristic to State
+    # Variable/Locator characteristic to Quality
     for v in var_nodes:
-        for st in g.objects(v, PH_has_charac):
+        for st in g.objects(v, RO_has_charac):
             add_edge(v, st, "hasCharacteristic")
     for l in loc_nodes:
-        for st in g.objects(l, PH_has_charac):
+        for st in g.objects(l, RO_has_charac):
             add_edge(l, st, "hasCharacteristic")
 
     # TU → species instance, species instance → species concept (rdf:type)
