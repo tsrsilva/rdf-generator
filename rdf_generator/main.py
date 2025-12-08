@@ -70,6 +70,7 @@ RO = Namespace("http://purl.obolibrary.org/obo/RO_")
 TXR = Namespace("http://purl.obolibrary.org/obo/TAXRANK_")
 UBERON = Namespace("http://purl.obolibrary.org/obo/UBERON_")
 UUID_NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
+XSD = Namespace("http://www.w3.org/2001/XMLSchema#")
 
 # === HELPERS ===
 
@@ -100,6 +101,28 @@ def assign_statement_type(g: Graph, entity: URIRef, variable_data: Optional[Dict
     else:
         g.add((entity, RDF.type, PHB.TransformationalSimpleStatement))
 
+# Robust Char_ID → integer parser for sorting; never raises.
+# Returns a large default when parsing fails, ensuring deterministic ordering.
+DEFAULT_CHAR_SORT_NUM = 10**9
+
+def parse_char_num(char_id: Any) -> int:
+    try:
+        s = str(char_id).strip()
+        if not s:
+            return DEFAULT_CHAR_SORT_NUM
+        # Remove a leading 'C' or 'c' if present
+        if s[0] in ('C', 'c'):
+            s = s[1:]
+        # Try direct int
+        return int(s)
+    except Exception:
+        # As a fallback, extract digits only
+        try:
+            digits = ''.join(ch for ch in str(char_id) if ch.isdigit())
+            return int(digits) if digits else DEFAULT_CHAR_SORT_NUM
+        except Exception:
+            return DEFAULT_CHAR_SORT_NUM
+
 # ---------- Graph setup helpers ----------
 def bind_namespaces(g: Graph) -> Graph:
     """
@@ -128,7 +151,8 @@ def bind_namespaces(g: Graph) -> Graph:
         ("rdfs", RDFS),
         ("ro", RO),
         ("txr", TXR),
-        ("uberon", UBERON)
+        ("uberon", UBERON),
+        ("xsd", XSD),
     ]
     for prefix, ns in ordered_prefixes:
         g.bind(prefix, ns, replace=True)
@@ -179,7 +203,7 @@ def build_base_graph() -> Graph:
     base.add((CDAO["0000208"], RDF.type, OWL.ObjectProperty))
     base.add((BFO["0000051"], RDF.type, OWL.ObjectProperty))
     base.add((RO["0000053"], RDF.type, OWL.ObjectProperty)) # has_characteristic
-    base.add((RO["0003301"], RDF.type, OWL.ObjectProperty))
+    base.add((RO["0003301"], RDF.type, OWL.ObjectProperty)) # has_role_in_modelling
     base.add((IAO["0000219"], RDF.type, OWL.ObjectProperty))
 
     ## Datatype Properties
@@ -369,7 +393,8 @@ def handle_character_type(
 def handle_organism(
         g: Graph,
         org_data: Any,
-        char_id: Optional[str] = None
+        char_id: Optional[str] = None,
+        taxon_label: Optional[str] = None
     ) -> Optional[URIRef]:
     """
     Add RDF triples for the organism. Returns the organism instance URI.
@@ -377,16 +402,26 @@ def handle_organism(
     If a char_id is provided, the organism instance UUID is derived from
     (char_id + label), ensuring a distinct organism instance per Char_ID even
     when the organism label is identical across rows.
+
+    Additionally, when taxon_label is provided, salt with it so that the
+    organism instance becomes unique per character and species (taxon).
     """
 
     org_label = org_data.get("Label")
     org_uri_str = org_data.get("URI") or str(KB[org_label.replace(" ", "_")])
     org_uri = URIRef(org_uri_str)
 
-    # Salt UUID with Char_ID (when available) to create per-character instances
-    org_uuid_seed = (
-        f"{char_id}::{org_label.strip().lower()}" if char_id else org_label.strip().lower()
-    )
+    # Salt UUID with Char_ID and optional taxon_label to ensure per-character and per-species uniqueness
+    org_label_norm = org_label.strip().lower() if org_label else "organism"
+    taxon_norm = taxon_label.strip().lower() if taxon_label else None
+    if char_id and taxon_norm:
+        org_uuid_seed = f"{char_id}::{taxon_norm}::{org_label_norm}"
+    elif char_id:
+        org_uuid_seed = f"{char_id}::{org_label_norm}"
+    elif taxon_norm:
+        org_uuid_seed = f"{taxon_norm}::{org_label_norm}"
+    else:
+        org_uuid_seed = org_label_norm
     org_instance = generate_uri("org", org_uuid_seed)
 
     g.add((org_uri, RDF.type, OWL.Class))
@@ -402,7 +437,8 @@ def handle_locator(
     g: Graph,
     locator: Any,              
     parent_instance: URIRef,
-    char_id: Optional[str] = None
+    char_id: Optional[str] = None,
+    org_seed: Optional[str] = None
 ) -> Optional[URIRef]:
     """
     Add RDF triples for an anatomical or other locator entity.
@@ -437,9 +473,16 @@ def handle_locator(
         return None  # malformed entry
 
     uri = next((v for k, v in loc_dict.items() if "uri" in k.lower() and v), None)
-    # Salt UUID with Char_ID to ensure per-character uniqueness
+    # Salt UUID with Organism seed and Char_ID to ensure per-organism uniqueness
     seed_base = uri or label.strip().lower()
-    seed = f"{char_id}::{seed_base}" if char_id else seed_base
+    if char_id and org_seed:
+        seed = f"{org_seed}::{char_id}::{seed_base}"
+    elif char_id:
+        seed = f"{char_id}::{seed_base}"
+    elif org_seed:
+        seed = f"{org_seed}::{seed_base}"
+    else:
+        seed = seed_base
     current_instance = generate_uri("loc", seed)
 
     if uri:
@@ -470,7 +513,8 @@ def is_male_organism(org_data: Dict[str, Any]) -> bool:
 def handle_organism_and_locators(
     g: Graph,
     data: Dict[str, Any],
-    override_org: Optional[Dict[str, Any]] = None
+    override_org: Optional[Dict[str, Any]] = None,
+    taxon_label: Optional[str] = None
 ) -> Tuple[Optional[URIRef], List[URIRef]]:
     """
     Wrapper: handle organism + its locators.
@@ -488,10 +532,13 @@ def handle_organism_and_locators(
     organism_instance = handle_organism(
         g,
         organism_data,
-        char_id=data.get("Char_ID")
+        char_id=data.get("Char_ID"),
+        taxon_label=taxon_label
     )
     previous_instance = organism_instance
     locators: List[URIRef] = []
+
+    org_seed = str(organism_instance) if organism_instance is not None else None
 
     for locator in data.get("Locators", []) or []:
         # Ensure locator is a dict
@@ -501,7 +548,13 @@ def handle_organism_and_locators(
             print(f"[WARN] Unexpected locator type {type(locator)} for Char_ID {data.get('Char_ID')}")
             continue
 
-        current_instance = handle_locator(g, locator, previous_instance, char_id=data.get("Char_ID"))
+        current_instance = handle_locator(
+            g,
+            locator,
+            previous_instance,
+            char_id=data.get("Char_ID"),
+            org_seed=org_seed
+        )
         if current_instance:
             locators.append(current_instance)
             previous_instance = current_instance  # chain continues
@@ -529,7 +582,8 @@ def compute_default_organism_instance_uri_from_dataset(
 def handle_variable_component(
     g: Graph,
     data: Dict[str, Any],
-    char_id: Optional[str] = None
+    char_id: Optional[str] = None,
+    org_seed: Optional[str] = None
 ) -> Optional[URIRef]:
     """
     Add RDF triples for the 'Variable' section. Returns the variable instance URIRef or None.
@@ -542,9 +596,15 @@ def handle_variable_component(
     var_label = var_data.get("Variable label", "Unnamed Variable")
     var_uri_str = var_data.get("Variable URI") or str(KB[var_label.replace(" ", "_")])
     var_uri = URIRef(var_uri_str)
-    var_uuid_seed = (
-        f"{char_id}::{var_label.strip().lower()}" if char_id else var_label.strip().lower()
-    )
+    # Salt UUID with Organism seed and Char_ID to ensure per-organism uniqueness
+    if org_seed and char_id:
+        var_uuid_seed = f"{org_seed}::{char_id}::{var_label.strip().lower()}"
+    elif char_id:
+        var_uuid_seed = f"{char_id}::{var_label.strip().lower()}"
+    elif org_seed:
+        var_uuid_seed = f"{org_seed}::{var_label.strip().lower()}"
+    else:
+        var_uuid_seed = var_label.strip().lower()
     var_instance_uri = generate_uri("var", var_uuid_seed)
     
     add_individual_triples(g, var_instance_uri, var_label)
@@ -792,7 +852,7 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
         f.write(prefix_block + "\n\n")
 
         # === Classes ===
-        f.write("### ==============================\n### Classes\n### ==============================\n\n")
+        f.write("### ===================== ### \n### ====== CLASSES ====== ###\n### ===================== ### \n\n")
         # === Classes ===
 
         # Preferred predicate ordering within class blocks
@@ -832,21 +892,21 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
             f.write("\n")
 
         # === Individuals (grouped by KB prefixes) ===
-        f.write("### ==============================\n### Individuals\n### ==============================\n\n")
+        f.write("### ===================== ### \n### ==== INDIVIDUALS ==== ###\n### ===================== ### \n\n")
 
         # Group by prefix buckets
         buckets = {
-            "## --- Species instances ---": lambda u: str(u).startswith(f"{KB_NS}sp-"),
-            "## --- Phenotype instances ---":  lambda u: str(u).startswith(f"{KB_NS}phe-"),
-            "## --- Organism instances ---": lambda u: str(u).startswith(f"{KB_NS}org-"),
-            "## --- Locator instances ---":  lambda u: str(u).startswith(f"{KB_NS}loc-"),
-            "## --- Variable instances ---":  lambda u: str(u).startswith(f"{KB_NS}var-"),
-            "## --- State instances ---":    lambda u: str(u).startswith(f"{KB_NS}sta-"),
-            "## --- Matrix instances ---": lambda u: str(u).startswith(f"{KB_NS}mx-"),
-            "## --- Character instances ---": lambda u: str(u).startswith(f"{KB_NS}char-"),
-            "## --- TU instances ---":   lambda u: str(u).startswith(f"{KB_NS}tu-"),       
-            "## --- Cell instances ---": lambda u: str(u).startswith(f"{KB_NS}cell-"),
-            "## --- Other Individuals ---":  lambda u: True,  # fallback
+            "## --- Species instances --- ##": lambda u: str(u).startswith(f"{KB_NS}sp-"),
+            "## --- Phenotype instances --- ##":  lambda u: str(u).startswith(f"{KB_NS}phe-"),
+            "## --- Organism instances --- ##": lambda u: str(u).startswith(f"{KB_NS}org-"),
+            "## --- Locator instances --- ##":  lambda u: str(u).startswith(f"{KB_NS}loc-"),
+            "## --- Variable instances --- ##":  lambda u: str(u).startswith(f"{KB_NS}var-"),
+            "## --- State instances --- ##":    lambda u: str(u).startswith(f"{KB_NS}sta-"),
+            "## --- Matrix instances --- ##": lambda u: str(u).startswith(f"{KB_NS}mx-"),
+            "## --- Character instances --- ##": lambda u: str(u).startswith(f"{KB_NS}char-"),
+            "## --- TU instances --- ##":   lambda u: str(u).startswith(f"{KB_NS}tu-"),       
+            "## --- Cell instances --- ##": lambda u: str(u).startswith(f"{KB_NS}cell-"),
+            "## --- Other Individuals --- ##":  lambda u: True,  # fallback
         }
 
         idv_preferred_preds = [
@@ -880,7 +940,36 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
 
             # Write bucket header
             f.write(header + "\n\n")
-            for s in sorted(bucket_nodes, key=lambda x: str(x)):
+
+            # Prefer metadata-based sorting for Phenotype instances to avoid brittle label parsing
+            def phenotype_sort_key(u: URIRef):
+                # Defaults push non-matching to the end deterministically
+                default = (10**9, "")
+                try:
+                    # Read kb:sortCharNum (integer) and kb:sortSpecies (string) if present
+                    sort_char = next((o for o in graph.objects(u, KB.sortCharNum)), None)
+                    sort_species = next((o for o in graph.objects(u, KB.sortSpecies)), None)
+                    if sort_char is not None and sort_species is not None:
+                        try:
+                            char_num = int(str(sort_char))
+                        except ValueError:
+                            # If literal has datatype, rdflib may allow int() directly; fallback safe parse
+                            try:
+                                char_num = int(sort_char.toPython())
+                            except Exception:
+                                return default
+                        species = str(sort_species)
+                        return (char_num, species)
+                except Exception:
+                    pass
+                return default
+
+            if header == "## --- Phenotype instances ---":
+                sorted_nodes = sorted(bucket_nodes, key=lambda u: (phenotype_sort_key(u), str(u)))
+            else:
+                sorted_nodes = sorted(bucket_nodes, key=lambda x: str(x))
+
+            for s in sorted_nodes:
                 pos = list(graph.predicate_objects(s))
                 if not pos:
                     continue
@@ -1111,31 +1200,29 @@ def build_cdao_matrix(
             cell_uri = generate_uri("cell", f"{taxon.label}_{char_index}")
 
             # UUID-based TU (for consistency)
-            tu_uri = generate_uri("tu", taxon.label)
+            # tu_uri = generate_uri("tu", taxon.label)
 
             g.add((cell_uri, RDF.type, OWL.NamedIndividual))
             g.add((cell_uri, RDF.type, CDAO["0000008"]))  # CDAO Cell
-            g.add((cell_uri, CDAO["0000191"], tu_uri))    # CDAO belongs to TU
+            # CDAO belongs to TU: added after minting organism-specific TU later in the loop
             g.add((cell_uri, CDAO["0000205"], char_uri))  # CDAO belongs to Character
 
             # Resolve the state for this specific cell
             cell_value = nexus_matrix[taxon][char_index]
             state_symbol = str(cell_value).strip() if cell_value is not None else ""
 
+            # Guard: only proceed with phenotype creation if state_symbol is a valid integer
+            try:
+                state_index = int(state_symbol)
+            except (TypeError, ValueError):
+                # Skip phenotype creation and linking for non-integer states (e.g., '-', '?', polymorphic)
+                continue
+
+            # Resolve chosen_state_node for valid integer state
             chosen_state_node: Optional[URIRef] = None
-            if state_symbol == '?':
-                # Unknown state node (stable per character)
-                unknown_node = generate_uri("unknown_state", f"{char_id}_unknown")
-                add_individual_triples(g, unknown_node, "unknown")
-                chosen_state_node = unknown_node
-            elif state_symbol and state_symbol != '-':
-                try:
-                    state_index = int(state_symbol)
-                    state_uri_str = char_state_mapping.get(char_id, {}).get(state_index)
-                    if state_uri_str:
-                        chosen_state_node = URIRef(state_uri_str)
-                except ValueError:
-                    pass  # unsupported polymorphic or non-integer state symbol
+            state_uri_str = char_state_mapping.get(char_id, {}).get(state_index)
+            if state_uri_str:
+                chosen_state_node = URIRef(state_uri_str)
 
             # Create and link a per-cell phenotype statement that points to exactly one state
             per_pheno_seed = f"pheno-{char_id}::{str(taxon.label).strip().lower()}"
@@ -1158,6 +1245,8 @@ def build_cdao_matrix(
 
             for ph_uri, override_org in pheno_variants:
                 # Minimal typing/label for the cell-specific phenotype
+                g.add((ph_uri, KB.sortCharNum, Literal(parse_char_num(char_id), datatype=XSD.integer)))
+                g.add((ph_uri, KB.sortSpecies, Literal(taxon.label)))
                 add_individual_triples(g, ph_uri, f"Phenotype statement for {char_data.get('CharacterLabel', char_id)} in {taxon.label}")
 
                 # Assign statement class based on Variable section
@@ -1165,13 +1254,35 @@ def build_cdao_matrix(
                 assign_statement_type(g, ph_uri, variable_data)
 
                 # Attach the organism/locator/variable components (with optional override)
-                org_instance, locator_instances = handle_organism_and_locators(g, char_data, override_org=override_org)
+                org_instance, locator_instances = handle_organism_and_locators(
+                    g,
+                    char_data,
+                    override_org=override_org,
+                    taxon_label=str(taxon.label)
+                )
+
+                # Mint a TU unique to (species, organism) and connect organism and cell to it
+                # tu_seed = f"{str(taxon.label).strip().lower()}::{str(org_instance)}" if org_instance is not None else f"{str(taxon.label).strip().lower()}::default-org"
+                tu_seed = f"{str(taxon.label).strip().lower()}"
+                tu_uri = generate_uri("tu", tu_seed)
+                g.add((tu_uri, RDF.type, OWL.NamedIndividual))
+                g.add((tu_uri, RDF.type, CDAO["0000138"]))
+                g.add((tu_uri, RDFS.label, Literal(str(taxon.label))))
+                if org_instance is not None:
+                    g.add((org_instance, RO["0003301"], tu_uri))
+                g.add((cell_uri, CDAO["0000191"], tu_uri))
+
                 if org_instance:
                     g.add((ph_uri, PHB.has_organismal_component, org_instance))
                 for locator in locator_instances:
                     g.add((ph_uri, PHB.has_entity_component, locator))
 
-                var_instance = handle_variable_component(g, char_data, char_id=char_id)
+                var_instance = handle_variable_component(
+                    g,
+                    char_data,
+                    char_id=char_id,
+                    org_seed=(str(org_instance) if org_instance is not None else None)
+                )
                 if var_instance:
                     g.add((ph_uri, PHB.has_variable_component, var_instance))
 
@@ -1180,20 +1291,26 @@ def build_cdao_matrix(
 
                 # Unify quality resolution: use the same index as state_symbol, or '?' → unknown quality
                 chosen_quality_node: Optional[URIRef] = None
-                if state_symbol == '?':
-                    unknown_q = generate_uri("unknown_quality", f"{char_id}_unknown")
-                    add_individual_triples(g, unknown_q, "unknown")
-                    chosen_quality_node = unknown_q
-                elif state_symbol and state_symbol != '-':
-                    try:
-                        q_index = int(state_symbol)
-                        q_uri_str = quality_map_for_char.get(q_index)
-                        if q_uri_str:
-                            chosen_quality_node = URIRef(q_uri_str)
-                    except ValueError:
-                        pass  # unsupported polymorphic or non-integer state symbol
+                # Use the same numeric index for the quality node as the state index
+                q_uri_str = quality_map_for_char.get(state_index)
+                if q_uri_str:
+                    chosen_quality_node = URIRef(q_uri_str)
 
                 if chosen_quality_node is not None:
+                    # If this is a known quality (not '?'), mint a per-organism quality node
+                    if state_symbol != '?' and org_instance is not None:
+                        base_q = chosen_quality_node
+                        per_org_q_seed = f"{str(org_instance)}::{char_id}::{str(base_q)}"
+                        per_org_quality = generate_uri("qua", per_org_q_seed)
+                        # Copy label and types from base quality node
+                        base_label = next((str(o) for o in g.objects(base_q, RDFS.label)), None)
+                        add_individual_triples(g, per_org_quality, base_label or "quality")
+                        g.add((per_org_quality, RDF.type, PATO["0000001"]))
+                        for t in g.objects(base_q, RDF.type):
+                            if t != OWL.NamedIndividual:
+                                g.add((per_org_quality, RDF.type, t))
+                        chosen_quality_node = per_org_quality
+
                     # Connect either Variable (preferred) or last Locator to the quality via has_quality_component
                     if var_instance is not None:
                         g.add((var_instance, RO["0000053"], chosen_quality_node))
@@ -1248,7 +1365,7 @@ def enrich_tu_graph(
     # TU assertions
     add_individual_triples(tu_graph, tu_uri, valid_label_html)
     tu_graph.add((org_instance, RDF.type, OWL.NamedIndividual))
-    tu_graph.add((org_instance, RO["0003301"], tu_uri)) # RO has role in modelling
+    # tu_graph.add((org_instance, RO["0003301"], tu_uri)) # RO has role in modelling
     tu_graph.add((tu_uri, RDF.type, CDAO["0000138"]))  # CDAO Taxon Unit
     tu_graph.add((tu_uri, IAO["0000219"], sp_instance)) # TU denotes species instance
 
