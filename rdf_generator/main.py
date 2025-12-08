@@ -893,6 +893,7 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
 
         # === Individuals (grouped by KB prefixes) ===
         f.write("### ===================== ### \n### ==== INDIVIDUALS ==== ###\n### ===================== ### \n\n")
+        # === Individuals ===
 
         # Group by prefix buckets
         buckets = {
