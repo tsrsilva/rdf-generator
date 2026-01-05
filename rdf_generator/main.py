@@ -181,6 +181,8 @@ def build_base_graph() -> Graph:
 
     base.add((UBERON["0007023"], RDFS.label, Literal("adult organism")))
 
+    base.add((CDAO["0000138"], RDF.type, OWL.Class))  # CDAO TU
+
     base.add((PHB.NeomorphicStatement, RDF.type, OWL.Class))
     base.add((PHB.TransformationalSimpleStatement, RDF.type, OWL.Class))
     base.add((PHB.TransformationalComplexStatement, RDF.type, OWL.Class))

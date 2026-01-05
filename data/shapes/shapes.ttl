@@ -55,9 +55,8 @@ phb:TransformationalSimplePhenotypeShape
     ] ;
 
     sh:property [
-        sh:path phb:has_variable_component ;
-        sh:minCount 1 ;
-        sh:node phb:VariableNodeShape ;
+   	sh:path rdfs:comment ;
+    	sh:maxCount 0 ;
     ] .
 
 # Transformational Complex: variable + comment required
@@ -79,46 +78,12 @@ phb:TransformationalComplexPhenotypeShape
     sh:property [
         sh:path phb:has_variable_component ;
         sh:minCount 1 ;
-        sh:node phb:VariableNodeShapeWithComment ;
+    ] ;
+    
+    sh:property [
+    	sh:path rdfs:comment ;
+    	sh:minCount 1 ;
     ] .
-
-#######################
-# Variable Node Shapes
-#######################
-
-# Variables used in simple statements: label required, no comment
-
-phb:VariableNodeShape
-  a sh:NodeShape ;
-  sh:targetClass phb:TransformationalSimplePhenotypeStatement ;
-  sh:targetObjectsOf phb:has_variable_component ;
-
-  sh:property [
-    sh:path rdfs:label ;
-    sh:minCount 1 ;
-  ] ;
-
-  sh:property [
-    sh:path rdfs:comment ;
-    sh:maxCount 0 ;
-  ] .
-
-# Variables used in complex statements: label + comment required
-
-phb:VariableNodeShapeWithComment
-  a sh:NodeShape ;
-  sh:targetClass phb:TransformationalComplexPhenotypeStatement ;
-  sh:targetObjectsOf phb:has_variable_component ;
-
-  sh:property [
-    sh:path rdfs:label ;
-    sh:minCount 1 ;
-  ] ;
-
-  sh:property [
-    sh:path rdfs:comment ;
-    sh:minCount 1 ;
-  ] .
 
 ################
 # Locator Shape
@@ -265,7 +230,16 @@ phb:MatrixShape
 
 phb:TUShape
   a sh:NodeShape ;
-  sh:targetClass cdao:0000138 ;
+  # sh:targetClass cdao:0000138 ;
+
+  sh:target [
+    a sh:SPARQLTarget ;
+    sh:select """
+      SELECT ?this WHERE {
+        ?this rdf:type cdao:0000138 .
+      }
+    """ ;
+  ] ;
 
   sh:property [
     sh:path iao:0000219 ; # denotes species instance
