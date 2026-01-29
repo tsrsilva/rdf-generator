@@ -21,13 +21,6 @@
     "match_level": "species"
   },
   {
-    "input_species_name": "Augochlora_pura",
-    "valid_species_name": "Augochlora pura (Say, 1837)",
-    "ID": 1352791,
-    "zoobank_identifier": null,
-    "match_level": "species"
-  },
-  {
     "input_species_name": "Coelioxys_octodentata",
     "valid_species_name": "Coelioxys octodentata Lepeletier, 1841",
     "ID": 11989800,
@@ -45,20 +38,6 @@
     "input_species_name": "Euglossa_cordata",
     "valid_species_name": "Euglossa cordata (Linnaeus, 1758)",
     "ID": 1340666,
-    "zoobank_identifier": null,
-    "match_level": "species"
-  },
-  {
-    "input_species_name": "Halictus_rubicundus",
-    "valid_species_name": "Halictus rubicundus (Christ, 1791)",
-    "ID": 1353453,
-    "zoobank_identifier": null,
-    "match_level": "species"
-  },
-  {
-    "input_species_name": "Meganomia_gigas",
-    "valid_species_name": "Meganomia gigas Michener, 1981",
-    "ID": 1345938,
     "zoobank_identifier": null,
     "match_level": "species"
   },

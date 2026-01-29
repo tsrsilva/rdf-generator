@@ -1,7 +1,7 @@
 #NEXUS
 
 BEGIN DATA;
-	DIMENSIONS  NTAX=10 NCHAR=10;
+	DIMENSIONS  NTAX=7 NCHAR=10;
 	FORMAT DATATYPE = STANDARD RESPECTCASE GAP = - MISSING = ? SYMBOLS = "01";
 	MATRIX			   
 	'Arhysoceble_picta'        0100011000
@@ -11,9 +11,6 @@ BEGIN DATA;
 	'Euglossa_cordata'         0101001100
 	'Anthidium_porterae'       1101001101
 	'Coelioxys_octodentata'    1101001101
-	'Meganomia_gigas'          00001000-0
-	'Halictus_rubicundus'      00000000-0
-	'Augochlora_pura'          00000000-0
 
 ;
 END;

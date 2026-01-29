@@ -11,7 +11,6 @@ import dendropy
 from rdflib import Graph, Namespace, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL
 from pyshacl import validate
-from pygraphviz import AGraph
 
 # === CONFIGURATION ===
 # Load configuration from YAML file
@@ -45,11 +44,10 @@ SHACL_FILE = os.path.join(DATA_DIR, config["input"]["shacl"])
 # Output directories
 DIR_VALIDATION = os.path.join(OUTPUT_DIR, config["output"]["validation"])
 DIR_COMBINED = os.path.join(OUTPUT_DIR, config["output"]["combined"])
-DIR_GRAPHVIZ = os.path.join(OUTPUT_DIR, config["output"]["graphviz"])
 
 # === SETUP ===
 # Create output dirs if they don’t exist
-for d in [DIR_VALIDATION, DIR_COMBINED, DIR_GRAPHVIZ]:
+for d in [DIR_VALIDATION, DIR_COMBINED]:
     os.makedirs(d, exist_ok=True)
 
 # Reset summary each run
@@ -175,13 +173,24 @@ def build_base_graph() -> Graph:
     bind_namespaces(base)
 
     # Minimal class declarations used across character graphs
-    base.add((UBERON["0007023"], RDF.type, OWL.Class))
     base.add((UBERON["0003100"], RDF.type, OWL.Class))
     base.add((UBERON["0003101"], RDF.type, OWL.Class))
 
-    base.add((UBERON["0007023"], RDFS.label, Literal("adult organism")))
-
+    base.add((CDAO["0000008"], RDF.type, OWL.Class))  # CDAO Cell
+    base.add((CDAO["0000045"], RDF.type, OWL.Class))  # CDAO State
+    base.add((CDAO["0000056"], RDF.type, OWL.Class))  # CDAO Character matrix
+    base.add((CDAO["0000075"], RDF.type, OWL.Class))  # CDAO Character
     base.add((CDAO["0000138"], RDF.type, OWL.Class))  # CDAO TU
+
+    base.add((CDAO["0000008"], RDFS.label, Literal("standard cell")))
+    base.add((CDAO["0000045"], RDFS.label, Literal("standard state")))
+    base.add((CDAO["0000056"], RDFS.label, Literal("character state data matrix")))
+    base.add((CDAO["0000075"], RDFS.label, Literal("standard character")))
+    base.add((CDAO["0000138"], RDFS.label, Literal("TU")))
+
+    base.add((PATO["0000001"], RDF.type, OWL.Class))  # PATO Quality
+
+    base.add((PATO["0000001"], RDFS.label, Literal("quality")))
 
     base.add((PHB.NeomorphicStatement, RDF.type, OWL.Class))
     base.add((PHB.TransformationalSimpleStatement, RDF.type, OWL.Class))
@@ -194,24 +203,42 @@ def build_base_graph() -> Graph:
     # Property declarations
     ## Object Properties
     base.add((PHB.has_organismal_component, RDF.type, OWL.ObjectProperty))
+    base.add((PHB.has_organismal_component, RDFS.label, Literal("has organismal component")))
     base.add((PHB.has_entity_component, RDF.type, OWL.ObjectProperty))
+    base.add((PHB.has_entity_component, RDFS.label, Literal("has entity component")))
     base.add((PHB.has_variable_component, RDF.type, OWL.ObjectProperty))
+    base.add((PHB.has_variable_component, RDFS.label, Literal("has variable component")))
     base.add((PHB.has_quality_component, RDF.type, OWL.ObjectProperty))
+    base.add((PHB.has_quality_component, RDFS.label, Literal("has quality component")))
     base.add((PHB.refers_to_phenotype_statement, RDF.type, OWL.ObjectProperty))
+    base.add((PHB.refers_to_phenotype_statement, RDFS.label, Literal("refers to phenotype statement")))
     base.add((CDAO["0000142"], RDF.type, OWL.ObjectProperty))
+    base.add((CDAO["0000142"], RDFS.label, Literal("has_Character")))
     base.add((CDAO["0000184"], RDF.type, OWL.ObjectProperty))
+    base.add((CDAO["0000184"], RDFS.label, Literal("has_State")))
     base.add((CDAO["0000191"], RDF.type, OWL.ObjectProperty))
+    base.add((CDAO["0000191"], RDFS.label, Literal("belongs_to_TU")))
     base.add((CDAO["0000205"], RDF.type, OWL.ObjectProperty))
+    base.add((CDAO["0000205"], RDFS.label, Literal("belongs_to_Character")))
     base.add((CDAO["0000208"], RDF.type, OWL.ObjectProperty))
+    base.add((CDAO["0000208"], RDFS.label, Literal("has_TU")))
     base.add((BFO["0000051"], RDF.type, OWL.ObjectProperty))
+    base.add((BFO["0000051"], RDFS.label, Literal("has part")))
     base.add((RO["0000053"], RDF.type, OWL.ObjectProperty)) # has_characteristic
+    base.add((RO["0000053"], RDFS.label, Literal("has characteristic")))
     base.add((RO["0003301"], RDF.type, OWL.ObjectProperty)) # has_role_in_modelling
+    base.add((RO["0003301"], RDFS.label, Literal("has role in modelling")))
     base.add((IAO["0000219"], RDF.type, OWL.ObjectProperty))
+    base.add((IAO["0000219"], RDFS.label, Literal("denotes")))
 
     ## Datatype Properties
     base.add((DC.description, RDF.type, OWL.DatatypeProperty))
     base.add((DWC.taxonID, RDF.type, OWL.DatatypeProperty))
     base.add((DWC.parentNameUsageID, RDF.type, OWL.DatatypeProperty))
+    base.add((KB.sortCharNum, RDF.type, OWL.DatatypeProperty))
+    base.add((KB.sortCharNum, RDFS.label, Literal("sort character number")))
+    base.add((KB.sortSpecies, RDF.type, OWL.DatatypeProperty))
+    base.add((KB.sortSpecies, RDFS.label, Literal("sort species")))
 
     ## Annotation Properties
     base.add((RDFS.label, RDF.type, OWL.AnnotationProperty))
@@ -327,7 +354,9 @@ def handle_species(
     sp_uri_str = species_info.get("URI") or str(KB[sp_label.replace(" ", "_")])
     sp_uri = URIRef(sp_uri_str)
     sp_g.add((sp_uri, RDF.type, OWL.Class))
-    sp_g.add((sp_uri, RDFS.label, Literal(sp_label)))
+    # Use valid_species_name for the label if available, otherwise fall back to sp_label
+    concept_label = species_info.get("valid_species_name", sp_label)
+    sp_g.add((sp_uri, RDFS.label, Literal(concept_label)))
     sp_g.add((sp_uri, RDF.type, TXR["0000006"]))  # the species is a TXR Species class
 
     # --- Species instance ---
@@ -395,32 +424,25 @@ def handle_character_type(
 def handle_organism(
         g: Graph,
         org_data: Any,
-        char_id: Optional[str] = None,
+        #char_id: Optional[str] = None,
         taxon_label: Optional[str] = None
     ) -> Optional[URIRef]:
     """
     Add RDF triples for the organism. Returns the organism instance URI.
 
-    If a char_id is provided, the organism instance UUID is derived from
-    (char_id + label), ensuring a distinct organism instance per Char_ID even
-    when the organism label is identical across rows.
+    If a taxon name is provided, the organism instance UUID is derived from
+    taxon_label, ensuring a distinct organism instance per species (taxon).
 
-    Additionally, when taxon_label is provided, salt with it so that the
-    organism instance becomes unique per character and species (taxon).
     """
 
     org_label = org_data.get("Label")
     org_uri_str = org_data.get("URI") or str(KB[org_label.replace(" ", "_")])
     org_uri = URIRef(org_uri_str)
 
-    # Salt UUID with Char_ID and optional taxon_label to ensure per-character and per-species uniqueness
+    # Derive organism UUID solely from taxon_label (when available) to ensure per-species uniqueness
     org_label_norm = org_label.strip().lower() if org_label else "organism"
     taxon_norm = taxon_label.strip().lower() if taxon_label else None
-    if char_id and taxon_norm:
-        org_uuid_seed = f"{char_id}::{taxon_norm}::{org_label_norm}"
-    elif char_id:
-        org_uuid_seed = f"{char_id}::{org_label_norm}"
-    elif taxon_norm:
+    if taxon_norm:
         org_uuid_seed = f"{taxon_norm}::{org_label_norm}"
     else:
         org_uuid_seed = org_label_norm
@@ -439,7 +461,7 @@ def handle_locator(
     g: Graph,
     locator: Any,              
     parent_instance: URIRef,
-    char_id: Optional[str] = None,
+    # char_id: Optional[str] = None,
     org_seed: Optional[str] = None
 ) -> Optional[URIRef]:
     """
@@ -477,11 +499,7 @@ def handle_locator(
     uri = next((v for k, v in loc_dict.items() if "uri" in k.lower() and v), None)
     # Salt UUID with Organism seed and Char_ID to ensure per-organism uniqueness
     seed_base = uri or label.strip().lower()
-    if char_id and org_seed:
-        seed = f"{org_seed}::{char_id}::{seed_base}"
-    elif char_id:
-        seed = f"{char_id}::{seed_base}"
-    elif org_seed:
+    if org_seed:
         seed = f"{org_seed}::{seed_base}"
     else:
         seed = seed_base
@@ -530,11 +548,11 @@ def handle_organism_and_locators(
     # Decide which organism data to use
     organism_data = override_org if override_org is not None else (data.get("Organism") or {})
 
-    # Create a per-Char_ID organism instance (salt UUID with Char_ID)
+    # Create a per-species organism instance (salt UUID with taxon_label)
     organism_instance = handle_organism(
         g,
         organism_data,
-        char_id=data.get("Char_ID"),
+        # char_id=data.get("Char_ID"),
         taxon_label=taxon_label
     )
     previous_instance = organism_instance
@@ -550,16 +568,18 @@ def handle_organism_and_locators(
             print(f"[WARN] Unexpected locator type {type(locator)} for Char_ID {data.get('Char_ID')}")
             continue
 
-        current_instance = handle_locator(
-            g,
-            locator,
-            previous_instance,
-            char_id=data.get("Char_ID"),
-            org_seed=org_seed
-        )
-        if current_instance:
-            locators.append(current_instance)
-            previous_instance = current_instance  # chain continues
+        if previous_instance is not None:
+            current_instance = handle_locator(
+                g,
+                locator,
+                previous_instance,
+                org_seed=org_seed
+            )
+            if current_instance:
+                locators.append(current_instance)
+                previous_instance = current_instance  # chain continues
+        else:
+            print(f"[WARN] Skipping locator for Char_ID {data.get('Char_ID')} because previous_instance is None")
 
     return organism_instance, locators
 
@@ -569,46 +589,82 @@ def compute_default_organism_instance_uri_from_dataset(
     """
     Compute a canonical organism instance URI deterministically from the dataset.
     Uses the first row that has an Organism section and salts the UUID with that
-    row's Char_ID to match the per-character organism instances created elsewhere.
+    row's taxon_label to match the per-species organism instances created elsewhere.
     No triples are added here.
     """
     for row in dataset:
         org = row.get("Organism") or {}
         org_label = org.get("Label")
-        char_id = row.get("Char_ID")
-        if org_label and char_id:
-            seed = f"{char_id}::{org_label.strip().lower()}"
+        taxon_label = row.get("SpeciesLabel")
+        if org_label and taxon_label:
+            seed = f"{taxon_label}::{org_label.strip().lower()}"
             return generate_uri("org", seed)
     return None
 
 def handle_variable_component(
     g: Graph,
     data: Dict[str, Any],
-    char_id: Optional[str] = None,
+    # char_id: Optional[str] = None,
     org_seed: Optional[str] = None
 ) -> Optional[URIRef]:
     """
     Add RDF triples for the 'Variable' section. Returns the variable instance URIRef or None.
+
+    UUID seeding strategy:
+      - Always include the variable label (normalized)
+      - If available, include organism seed (per-species uniqueness)
+      - If available, include the last locator of the locator chain (per-locator uniqueness)
+
+    Note on scoping:
+        Variable component in original character syntax scopes the quality
+        to a specific entity. Current model treats variable as statement-level
+        component, which may result in loss of scope information (i.e., the variable explains
+        what entity?).
+    
+    Note on modeling: 
+        Variables should be modeled as reified observation nodes:
+        e.g.
+            observation
+                ├── observes_entity ──> lorum
+                ├── has_variable ──> degree of fusion
+                └── has_quality ──> fused
     """
     var_data = data.get("Variable")
     if not var_data:
         return None
 
-    # Salt UUID with Char_ID (when available) to create per-character instances
+    # Base identifiers
     var_label = var_data.get("Variable label", "Unnamed Variable")
     var_uri_str = var_data.get("Variable URI") or str(KB[var_label.replace(" ", "_")])
     var_uri = URIRef(var_uri_str)
-    # Salt UUID with Organism seed and Char_ID to ensure per-organism uniqueness
-    if org_seed and char_id:
-        var_uuid_seed = f"{org_seed}::{char_id}::{var_label.strip().lower()}"
-    elif char_id:
-        var_uuid_seed = f"{char_id}::{var_label.strip().lower()}"
-    elif org_seed:
-        var_uuid_seed = f"{org_seed}::{var_label.strip().lower()}"
-    else:
-        var_uuid_seed = var_label.strip().lower()
+
+    # Determine the last locator seed from the chain, preferring a URI if present
+    last_loc_seed: Optional[str] = None
+    try:
+        locs = data.get("Locators") or []
+        if isinstance(locs, list) and len(locs) > 0:
+            last = locs[-1]
+            if isinstance(last, dict):
+                last_label = next((v for k, v in last.items() if "label" in k.lower()), None)
+                last_uri = next((v for k, v in last.items() if "uri" in k.lower() and v), None)
+                last_loc_seed = (last_uri or (last_label.strip().lower() if last_label else None))
+            elif isinstance(last, (str, URIRef)):
+                last_loc_seed = str(last)
+    except Exception:
+        # If anything goes wrong, just omit the locator from the seed
+        last_loc_seed = None
+
+    # Compose the UUID seed in a stable order
+    seed_components: List[str] = []
+    if org_seed:
+        seed_components.append(str(org_seed))
+    if last_loc_seed:
+        seed_components.append(str(last_loc_seed))
+    seed_components.append(var_label.strip().lower())
+
+    var_uuid_seed = "::".join(seed_components)
     var_instance_uri = generate_uri("var", var_uuid_seed)
-    
+
     add_individual_triples(g, var_instance_uri, var_label)
 
     if var_data.get("Variable URI"):
@@ -652,6 +708,8 @@ def handle_quality(
 
         # Type assignment
         if uri:
+            g.add((URIRef(uri), RDF.type, OWL.Class))
+            g.add((URIRef(uri), RDFS.label, Literal(label)))
             g.add((quality_node, RDF.type, URIRef(uri)))
         add_individual_triples(g, quality_node, label)
 
@@ -687,9 +745,7 @@ def handle_states(
 
         g.add((state_node, RDF.type, CDAO["0000045"]))  # CDAO State
 
-        # Type assignment
-        if uri:
-            g.add((state_node, RDF.type, URIRef(uri)))
+        # Only type as CDAO State; do not also type as a quality class
         add_individual_triples(g, state_node, label)
 
         # Link state to character
@@ -732,11 +788,6 @@ def process_phenotype(
 
     # States: build state nodes and register allowed states per Character
     state_map_for_char = handle_states(g, row)
-
-    # Attach Variable component at the character-level template (unique per Char_ID)
-    # var_instance_char = handle_variable_component(g, row, char_id=char_id)
-    # if var_instance_char:
-        # g.add((char_uri, PHB.has_variable_component, var_instance_char))
 
     # Catalog allowed states at the Character level only
     for idx, state_uri in state_map_for_char.items():
@@ -904,6 +955,7 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
             "## --- Organism instances --- ##": lambda u: str(u).startswith(f"{KB_NS}org-"),
             "## --- Locator instances --- ##":  lambda u: str(u).startswith(f"{KB_NS}loc-"),
             "## --- Variable instances --- ##":  lambda u: str(u).startswith(f"{KB_NS}var-"),
+            "## --- Quality instances --- ##":   lambda u: str(u).startswith(f"{KB_NS}qua-"),
             "## --- State instances --- ##":    lambda u: str(u).startswith(f"{KB_NS}sta-"),
             "## --- Matrix instances --- ##": lambda u: str(u).startswith(f"{KB_NS}mx-"),
             "## --- Character instances --- ##": lambda u: str(u).startswith(f"{KB_NS}char-"),
@@ -922,7 +974,6 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
             PHB.has_variable_component,
             PHB.has_quality_component,
             PHB.may_have_state,
-            # PHB.has_characteristic,
             PHB.refers_to_phenotype_statement,
             BFO["0000051"],
             RO["0000053"],
@@ -955,8 +1006,8 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
                     if sort_char is not None and sort_species is not None:
                         try:
                             char_num = int(str(sort_char))
-                        except ValueError:
-                            # If literal has datatype, rdflib may allow int() directly; fallback safe parse
+                        except (ValueError, TypeError):
+                            # If literal has datatype, try toPython() conversion
                             try:
                                 char_num = int(sort_char.toPython())
                             except Exception:
@@ -967,7 +1018,7 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
                     pass
                 return default
 
-            if header == "## --- Phenotype instances ---":
+            if "Phenotype" in header:
                 sorted_nodes = sorted(bucket_nodes, key=lambda u: (phenotype_sort_key(u), str(u)))
             else:
                 sorted_nodes = sorted(bucket_nodes, key=lambda x: str(x))
@@ -1069,26 +1120,47 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
                 f.write(line + "\n")
             f.write("\n")
 
-def visualize_graph(classes, individuals, edges, output_file="graph.svg"):
-    g = AGraph(directed=True, strict=False, rankdir="LR")
-    g.node_attr.update(
-        shape="ellipse", style="filled", fillcolor="#d5f5e3",
-        margin="0.1,0.1", width="0.2", height="0.2",
-        nodesep="1.0", ranksep="2.0", splines="true"
-    )
-    for cls in classes:
-        g.add_node(cls, shape="box", fillcolor="#cce5ff")
-    for ind in individuals:
-        short_label = ind.split("#")[-1]
-        g.add_node(ind, label=short_label)
-    for src, dst, label in edges:
-        g.add_edge(src, dst, label=label)
-    if classes:
-        g.add_subgraph(classes, rank='same')
-    if individuals:
-        g.add_subgraph(individuals, rank='same')
-    g.layout(prog="fdp")
-    g.draw(output_file)
+def prune_unreferenced_prototypes(g: Graph) -> Dict[str, int]:
+    """
+    Remove unreferenced prototype individuals:
+      - Qualities: kb:qua-* that are not objects of phb:has_quality_component
+      - Organisms: kb:org-* that are not objects of phb:has_organismal_component
+    Returns counts removed by kind.
+    """
+    KB_NS = str(KB)
+    removed = {"qualities": 0, "organisms": 0, "total": 0}
+
+    referenced_qualities = {o for _, _, o in g.triples((None, PHB.has_quality_component, None)) if isinstance(o, URIRef)}
+    referenced_organisms = {o for _, _, o in g.triples((None, PHB.has_organismal_component, None)) if isinstance(o, URIRef)}
+
+    candidates = list(set(g.subjects(RDF.type, OWL.NamedIndividual)))
+    to_remove: List[Tuple[str, URIRef]] = []
+
+    for s in candidates:
+        if not isinstance(s, URIRef):
+            continue
+        su = str(s)
+        if su.startswith(f"{KB_NS}qua-"):
+            if s not in referenced_qualities:
+                to_remove.append(("qualities", s))
+        elif su.startswith(f"{KB_NS}org-"):
+            if s not in referenced_organisms:
+                to_remove.append(("organisms", s))
+
+    for kind, s in to_remove:
+        # Remove outgoing triples
+        for p, o in list(g.predicate_objects(s)):
+            g.remove((s, p, o))
+        # Remove incoming triples
+        for subj, pred in list(g.subject_predicates(s)):
+            g.remove((subj, pred, s))
+        removed[kind] += 1
+        removed["total"] += 1
+
+    print(f"[PRUNE] Removed {removed['qualities']} unreferenced quality prototypes and {removed['organisms']} unreferenced organism prototypes (total {removed['total']}).")
+    return removed
+
+# Visualization disabled: visualize_graph removed
 
 # ---------- High-level build steps ----------
 
@@ -1164,17 +1236,13 @@ def build_cdao_matrix(
     """
     g = create_graph_with_namespaces()
 
-    # Create matrix URI
-    matrix_uri = URIRef(f"http://phenobees.org/kb#mx-{uuid.uuid4().hex[:8]}")
+    # Create matrix URI using a stable prefix
+    mx_label = row.get("MatrixLabel")
+    matrix_uri = generate_uri("mx", mx_label or "default_matrix")
     g.add((matrix_uri, RDF.type, CDAO["0000056"]))  # CDAO Matrix/CharacterStateDataMatrix
     g.add((matrix_uri, RDFS.label, Literal("matrix")))
     g.add((matrix_uri, DC.description, Literal("matrix description")))
     g.add((matrix_uri, RDF.type, OWL.NamedIndividual))
-
-    # TUs
-    for taxon in nexus_matrix.taxon_namespace:
-        tu_uri = generate_uri("tu", taxon.label)
-        g.add((matrix_uri, CDAO["0000208"], tu_uri))  # CDAO has TU
 
     # Characters (columns) + phenotypes templates + species
     for char_index, char_id in enumerate(char_ids_in_order):
@@ -1264,8 +1332,7 @@ def build_cdao_matrix(
                     taxon_label=str(taxon.label)
                 )
 
-                # Mint a TU unique to (species, organism) and connect organism and cell to it
-                # tu_seed = f"{str(taxon.label).strip().lower()}::{str(org_instance)}" if org_instance is not None else f"{str(taxon.label).strip().lower()}::default-org"
+                # Mint a TU unique to species and connect organism, cell and matrix to it
                 tu_seed = f"{str(taxon.label).strip().lower()}"
                 tu_uri = generate_uri("tu", tu_seed)
                 g.add((tu_uri, RDF.type, OWL.NamedIndividual))
@@ -1274,6 +1341,7 @@ def build_cdao_matrix(
                 if org_instance is not None:
                     g.add((org_instance, RO["0003301"], tu_uri))
                 g.add((cell_uri, CDAO["0000191"], tu_uri))
+                g.add((matrix_uri, CDAO["0000208"], tu_uri))
 
                 if org_instance:
                     g.add((ph_uri, PHB.has_organismal_component, org_instance))
@@ -1283,14 +1351,10 @@ def build_cdao_matrix(
                 var_instance = handle_variable_component(
                     g,
                     char_data,
-                    char_id=char_id,
                     org_seed=(str(org_instance) if org_instance is not None else None)
                 )
                 if var_instance:
                     g.add((ph_uri, PHB.has_variable_component, var_instance))
-
-                if var_instance and locator_instances:
-                    g.add((locator_instances[-1], BFO["0000051"], var_instance))
 
                 # Unify quality resolution: use the same index as state_symbol, or '?' → unknown quality
                 chosen_quality_node: Optional[URIRef] = None
@@ -1314,14 +1378,12 @@ def build_cdao_matrix(
                                 g.add((per_org_quality, RDF.type, t))
                         chosen_quality_node = per_org_quality
 
-                    # Connect either Variable (preferred) or last Locator to the quality via has_quality_component
-                    if var_instance is not None:
-                        g.add((var_instance, RO["0000053"], chosen_quality_node))
-                        g.add((ph_uri, PHB.has_quality_component, chosen_quality_node))
-                    elif locator_instances:
+                    # Connect only the last Locator to the quality via has_characteristic (RO:0000053)
+                    if locator_instances:
                         last_locator = locator_instances[-1]
                         g.add((last_locator, RO["0000053"], chosen_quality_node))
-                        g.add((ph_uri, PHB.has_quality_component, chosen_quality_node))
+                    # Still assert that the phenotype has this quality component
+                    g.add((ph_uri, PHB.has_quality_component, chosen_quality_node))
 
                 # Link exactly one state (if resolvable) to the cell phenotype instance
                 if chosen_state_node is not None:
@@ -1367,8 +1429,9 @@ def enrich_tu_graph(
 
     # TU assertions
     add_individual_triples(tu_graph, tu_uri, valid_label_html)
-    tu_graph.add((org_instance, RDF.type, OWL.NamedIndividual))
-    # tu_graph.add((org_instance, RO["0003301"], tu_uri)) # RO has role in modelling
+    # Only assert org_instance triples if we have a valid URIRef
+    if org_instance is not None:
+        tu_graph.add((org_instance, RDF.type, OWL.NamedIndividual))
     tu_graph.add((tu_uri, RDF.type, CDAO["0000138"]))  # CDAO Taxon Unit
     tu_graph.add((tu_uri, IAO["0000219"], sp_instance)) # TU denotes species instance
 
@@ -1384,7 +1447,7 @@ def process_taxon(
     combined_report_graph: Graph,
     validation_dir: str,
     dir_combined: str,
-    dir_graphviz: str
+    # dir_graphviz: str
 ) -> Graph:  # return the TU graph so main can merge it later
     taxon_label = str(taxon.label)
 
@@ -1462,6 +1525,12 @@ def process_taxon(
     # Compute a stable organism instance URI for this TU
     org_instance = compute_default_organism_instance_uri_from_dataset(dataset)  # uses global 'dataset'
 
+    # Fallback: synthesize a per-taxon organism instance if not derivable from dataset
+    if org_instance is None:
+        # Use a generic organism label; UUID seed includes taxon to remain deterministic per TU
+        fallback_seed = f"{taxon_label.strip().lower()}::organism"
+        org_instance = generate_uri("org", fallback_seed)
+
     # Enrich tu graph
     enrich_tu_graph(
         tu_graph,
@@ -1532,7 +1601,7 @@ def main():
             combined_report_graph=combined_report_graph,
             validation_dir=DIR_VALIDATION,
             dir_combined=DIR_COMBINED,
-            dir_graphviz=DIR_GRAPHVIZ
+            # dir_graphviz=DIR_GRAPHVIZ
         )
         tu_graphs.append(g_tu)
 
@@ -1546,6 +1615,8 @@ def main():
     )
 
     # Write individual components (optional)
+    # Prune unreferenced prototypes at the matrix level to avoid dangling individuals
+    prune_unreferenced_prototypes(matrix_graph)
     matrix_ttl = os.path.join(DIR_COMBINED, "matrix.ttl")
     write_ttl_with_sections(matrix_graph, matrix_ttl)
 
@@ -1580,14 +1651,12 @@ def main():
         validation_dir=DIR_VALIDATION
     )
 
+    # Final pruning on the merged graph
+    prune_unreferenced_prototypes(final_graph)
+
     merged_ttl = os.path.join(DIR_COMBINED, "all_combined.ttl")
     write_ttl_with_sections(final_graph, merged_ttl)
     print(f"[OK] Full combined TTL → {merged_ttl}")
-
-    # Render combined visualization
-    combined_svg = os.path.join(DIR_GRAPHVIZ, "combined.svg")
-    build_combined_visualization(final_graph, combined_svg)
-    print(f"[OK] Combined graph visualization → {combined_svg}")
 
     # Serialize combined SHACL validation report graph
     validation_report_ttl = os.path.join(DIR_VALIDATION, "validation_report.ttl")
@@ -1597,254 +1666,7 @@ def main():
     except Exception as e:
         print(f"[WARN] Failed to write SHACL validation report: {e}")
 
-# ---------- Combined visualization ----------
-
-def build_combined_visualization(
-    g: Graph,
-    output_path: str,
-    tu_filter: Optional[List[str]] = None,
-    prog: str = "sfdp",
-    ranksep: float = 3.0,
-    nodesep: float = 1.5,
-    splines: str = "curved",
-    cluster_by_tu: bool = False,
-    max_label_len: int = 48,
-    group_strategy: str = "buckets",  # initial | buckets | connected
-    group_bucket_count: int = 6,
-    add_spacers: bool = True
-) -> None:
-    """
-    Build a single combined Graphviz visualization from the final merged RDF graph.
-
-    Focus on core components and predicates already used in the pipeline:
-      - Nodes: Matrix, TUs, Characters, Cells, Phenotypes, Species (concept + instance),
-               Variables, Locators, Organisms, States.
-      - Edges: key CDAO and PHB predicates wiring these components.
-    """
-    # Role detection helpers
-    def is_uri(u):
-        return isinstance(u, URIRef)
-
-    # Resolve key predicate URIs for compact comparisons
-    C_has_tu = CDAO["0000208"]       # Matrix has TU
-    C_has_char = CDAO["0000142"]     # Matrix has Character
-    C_cell = CDAO["0000008"]         # Cell class
-    C_cell_belongs_tu = CDAO["0000191"]
-    C_cell_belongs_char = CDAO["0000205"]
-    C_cell_has_state = CDAO["0000184"]
-
-    PH_has_org = PHB.has_organismal_component
-    PH_has_ent = PHB.has_entity_component
-    PH_has_var = PHB.has_variable_component
-    PH_has_qual = PHB.has_quality_component
-    PH_refers_pheno = PHB.refers_to_phenotype_statement
-
-    RO_has_charac = RO["0000053"]
-
-    IAO_denotes = IAO["0000219"]
-
-    # Collect roles
-    roles = {}
-    labels = {}
-
-    def label_for(u: URIRef) -> str:
-        # Prefer rdfs:label if present
-        lab = next((str(o) for o in g.objects(u, RDFS.label)), None)
-        if lab:
-            return lab
-        # Fallback to suffix
-        us = str(u)
-        if '#' in us:
-            return us.split('#')[-1]
-        return us.rstrip('/').split('/')[-1]
-
-    # Identify Matrix nodes
-    matrix_nodes = set(s for s, p, o in g.triples((None, RDF.type, CDAO["0000056"])) )
-    for m in matrix_nodes:
-        roles[m] = "matrix"
-        labels[m] = label_for(m)
-
-    # Identify TU nodes via explicit typing or usage
-    tu_nodes = set()
-    for s, p, o in g:
-        if p == C_has_tu and is_uri(o):
-            tu_nodes.add(o)
-        if p == C_cell_belongs_tu and is_uri(o):
-            tu_nodes.add(o)
-    # Also those typed as CDAO Taxon Unit
-    for tu in g.subjects(RDF.type, CDAO["0000138"]):
-        tu_nodes.add(tu)
-    for tu in tu_nodes:
-        roles[tu] = "tu"
-        labels[tu] = label_for(tu)
-
-    # Characters
-    char_nodes = set()
-    for s, p, o in g.triples((None, RDF.type, CDAO["0000075"])):
-        char_nodes.add(s)
-    for s, p, o in g:
-        if p == C_has_char and is_uri(o):
-            char_nodes.add(o)
-        if p == C_cell_belongs_char and is_uri(o):
-            char_nodes.add(o)
-    for ch in char_nodes:
-        roles[ch] = "character"
-        labels[ch] = label_for(ch)
-
-    # Cells
-    cell_nodes = set(s for s, p, o in g.triples((None, RDF.type, C_cell)))
-    for c in cell_nodes:
-        roles[c] = "cell"
-        labels[c] = label_for(c)
-
-    # Phenotypes: look for nodes that are referenced by PHB.refers_to_phenotype_statement
-    phe_nodes = set(o for s, p, o in g.triples((None, PH_refers_pheno, None)) if is_uri(o))
-    for ph in phe_nodes:
-        roles[ph] = "phenotype"
-        labels[ph] = label_for(ph)
-
-    # Species concept and instance: look for IAO:0000219 from TU → species instance
-    sp_inst_nodes = set(o for s, p, o in g.triples((None, IAO_denotes, None)) if is_uri(o))
-    for si in sp_inst_nodes:
-        roles[si] = "species_instance"
-        labels[si] = label_for(si)
-    # Species concept nodes: class of species instance or TXR species class
-    for si in sp_inst_nodes:
-        for cls in g.objects(si, RDF.type):
-            if is_uri(cls):
-                roles.setdefault(cls, "species_concept")
-                labels[cls] = label_for(cls)
-    for sc in g.subjects(RDF.type, TXR["0000006"]):
-        roles[sc] = "species_concept"
-        labels[sc] = label_for(sc)
-
-    # Variables, Locators, Organisms, States inferred from predicates
-    var_nodes = set(o for s, p, o in g.triples((None, PH_has_var, None)) if is_uri(o))
-    for v in var_nodes:
-        roles[v] = "variable"
-        labels[v] = label_for(v)
-
-    loc_nodes = set(o for s, p, o in g.triples((None, PH_has_ent, None)) if is_uri(o))
-    for l in loc_nodes:
-        roles[l] = "locator"
-        labels[l] = label_for(l)
-
-    org_nodes = set(o for s, p, o in g.triples((None, PH_has_org, None)) if is_uri(o))
-    for o_ in org_nodes:
-        roles[o_] = "organism"
-        labels[o_] = label_for(o_)
-
-    state_nodes = set(o for s, p, o in g.triples((None, PH_has_qual, None)) if is_uri(o))
-    state_nodes |= set(o for s, p, o in g.triples((None, C_cell_has_state, None)) if is_uri(o))
-    for st in state_nodes:
-        roles[st] = "state"
-        labels[st] = label_for(st)
-
-    # Build edges of interest
-    edges = []  # (src, dst, label)
-    def add_edge(s, d, label):
-        edges.append((str(s), str(d), label))
-
-    # Matrix edges
-    for m in matrix_nodes:
-        for tu in g.objects(m, C_has_tu):
-            add_edge(m, tu, "hasTU")
-        for ch in g.objects(m, C_has_char):
-            add_edge(m, ch, "hasCharacter")
-
-    # Cell edges
-    for c in cell_nodes:
-        for tu in g.objects(c, C_cell_belongs_tu):
-            add_edge(c, tu, "belongsToTU")
-        for ch in g.objects(c, C_cell_belongs_char):
-            add_edge(c, ch, "belongsToCharacter")
-        for st in g.objects(c, C_cell_has_state):
-            add_edge(c, st, "hasState")
-        for ph in g.objects(c, PH_refers_pheno):
-            add_edge(c, ph, "refersToPhenotype")
-
-    # Phenotype component edges
-    for ph in phe_nodes:
-        for o_ in g.objects(ph, PH_has_org):
-            add_edge(ph, o_, "hasOrganism")
-        for l in g.objects(ph, PH_has_ent):
-            add_edge(ph, l, "hasEntity")
-        for v in g.objects(ph, PH_has_var):
-            add_edge(ph, v, "hasVariable")
-        for st in g.objects(ph, PH_has_qual):
-            add_edge(ph, st, "hasQuality")
-
-    # Variable/Locator characteristic to Quality
-    for v in var_nodes:
-        for st in g.objects(v, RO_has_charac):
-            add_edge(v, st, "hasCharacteristic")
-    for l in loc_nodes:
-        for st in g.objects(l, RO_has_charac):
-            add_edge(l, st, "hasCharacteristic")
-
-    # TU → species instance, species instance → species concept (rdf:type)
-    for tu in tu_nodes:
-        for si in g.objects(tu, IAO_denotes):
-            add_edge(tu, si, "denotes")
-            for sc in g.objects(si, RDF.type):
-                if is_uri(sc):
-                    add_edge(si, sc, "rdf:type")
-
-    # Build node lists for visualization with role-based styling
-    classes = []
-    individuals = []
-    # Color/shape maps
-    style_map = {
-        "matrix": ("box3d", "#d6d8db"),
-        "tu": ("ellipse", "#ffe0b2"),
-        "character": ("box", "#cce5ff"),
-        "cell": ("diamond", "#f8d7da"),
-        "phenotype": ("ellipse", "#d5f5e3"),
-        "species_concept": ("hexagon", "#e2e3e5"),
-        "species_instance": ("doublecircle", "#fff3cd"),
-        "state": ("note", "#e2f0d9"),
-        "variable": ("component", "#d1ecf1"),
-        "locator": ("folder", "#e2e3e5"),
-        "organism": ("house", "#f5e6ff"),
-    }
-
-    # Prepare Graphviz graph
-    G = AGraph(directed=True, strict=False, rankdir="LR")
-    G.node_attr.update(
-        shape="ellipse", style="filled", fillcolor="#d5f5e3",
-        margin="0.1,0.1", width="0.2", height="0.2",
-        nodesep="1.0", ranksep="2.0", splines="true"
-    )
-
-    # Add nodes with styling
-    for node, role in roles.items():
-        n_id = str(node)
-        label = labels.get(node, n_id.split('#')[-1])
-        shape, color = style_map.get(role, ("ellipse", "#d5f5e3"))
-        G.add_node(n_id, label=label, tooltip=n_id, shape=shape, fillcolor=color)
-        # Partition nodes into classes/individuals arrays for potential subgraphs
-        # Treat species_concept and character as classes; others as individuals
-        if role in ("species_concept", "character"):
-            classes.append(n_id)
-        else:
-            individuals.append(n_id)
-
-    # Add edges
-    for s, d, lbl in edges:
-        G.add_edge(s, d, label=lbl)
-
-    # Optional: group ranks
-    if classes:
-        G.add_subgraph(classes, rank='same')
-    if individuals:
-        G.add_subgraph(individuals, rank='same')
-
-    # Layout and draw
-    try:
-        G.layout(prog="sfdp")
-    except Exception:
-        G.layout(prog="fdp")
-    G.draw(output_path)
+# Combined visualization disabled: build_combined_visualization removed
 
 
 if __name__ == "__main__":

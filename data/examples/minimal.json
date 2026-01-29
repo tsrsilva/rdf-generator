@@ -1,5 +1,79 @@
 [
   {
+    "Char_ID": "C1",
+    "Organism": {
+      "Label": "adult organism",
+      "URI": "http://purl.obolibrary.org/obo/UBERON_0007023"
+    },
+    "Locators": [
+      {
+        "Locator 1 label": "labrum",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/HAO_0000456"
+      }
+    ],
+    "Variable": {
+      "Variable label": "width",
+      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000921",
+      "Variable comment": "relative to length"
+    },
+    "States": [
+      {
+        "State 0 label": "broader",
+        "State 0 URI": null,
+        "State 0 token": "0"
+      },
+      {
+        "State 1 label": "narrower",
+        "State 1 URI": null,
+        "State 1 token": "1"
+      }
+    ],
+    "Tag": "transformational_complex"
+  },
+  {
+    "Char_ID": "C2",
+    "Organism": {
+      "Label": "female organism",
+      "URI": "http://purl.obolibrary.org/obo/UBERON_0003100"
+    },
+    "Locators": [
+      {
+        "Locator 1 label": "labrum",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/HAO_0000456"
+      },
+      {
+        "Locator 2 label": "anterior surface",
+        "Locator 2 URI": "http://purl.obolibrary.org/obo/BSPO_0000371"
+      },
+      {
+        "Locator 3 label": "basal area",
+        "Locator 3 URI": null
+      }
+    ],
+    "Variable": {
+      "Variable label": "texture",
+      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000150"
+    },
+    "States": [
+      {
+        "State 0 label": "smooth",
+        "State 0 URI": "http://purl.obolibrary.org/obo/PATO_0000701",
+        "State 0 token": "0"
+      },
+      {
+        "State 1 label": "punctate",
+        "State 1 URI": "http://purl.obolibrary.org/obo/PATO_0001512",
+        "State 1 token": "1"
+      },
+      {
+        "State 2 label": "rugose",
+        "State 2 URI": "http://purl.obolibrary.org/obo/PATO_0001359",
+        "State 2 token": "2"
+      }
+    ],
+    "Tag": "transformational_simple"
+  },
+  {
     "Char_ID": "C3",
     "Organism": {
       "Label": "adult organism",
@@ -21,8 +95,7 @@
     ],
     "Variable": {
       "Variable label": "shape",
-      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000052",
-      "Variable comment": null
+      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000052"
     },
     "States": [
       {
@@ -36,7 +109,75 @@
         "State 1 token": "1"
       }
     ],
-    "Tag": "transformational"
+    "Tag": "transformational_simple"
+  },
+  {
+    "Char_ID": "C4",
+    "Organism": {
+      "Label": "adult organism",
+      "URI": "http://purl.obolibrary.org/obo/UBERON_0007023"
+    },
+    "Locators": [
+      {
+        "Locator 1 label": "glossa",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/HAO_0000376"
+      },
+      {
+        "Locator 2 label": "posterior surface",
+        "Locator 2 URI": "http://purl.obolibrary.org/obo/BSPO_0000372"
+      }
+    ],
+    "Variable": {
+      "Variable label": "degree of concealment",
+      "Variable URI": null
+    },
+    "States": [
+      {
+        "State 0 label": "exposed",
+        "State 0 URI": "http://purl.obolibrary.org/obo/PATO_0002425",
+        "State 0 token": "0"
+      },
+      {
+        "State 1 label": "concealed",
+        "State 1 URI": "http://purl.obolibrary.org/obo/PATO_0002508",
+        "State 1 token": "1"
+      }
+    ],
+    "Tag": "transformational_simple"
+  },
+  {
+    "Char_ID": "C5",
+    "Organism": {
+      "Label": "adult organism",
+      "URI": "http://purl.obolibrary.org/obo/UBERON_0007023"
+    },
+    "Locators": [
+      {
+        "Locator 1 label": "cardo",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/HAO_0001979"
+      },
+      {
+        "Locator 2 label": "distal region",
+        "Locator 2 URI": "http://purl.obolibrary.org/obo/BSPO_0000078"
+      },
+      {
+        "Locator 3 label": "triangular intercalary sclerite",
+        "Locator 3 URI": null
+      }
+    ],
+    "States": [
+      {
+        "State 0 label": "absent",
+        "State 0 URI": "http://purl.obolibrary.org/obo/PATO_0000462",
+        "State 0 token": "0"
+      },
+      {
+        "State 1 label": "present",
+        "State 1 URI": "http://purl.obolibrary.org/obo/PATO_0000467",
+        "State 1 token": "1"
+      }
+    ],
+    "Tag": "neomorphic"
   },
   {
     "Char_ID": "C6",
@@ -46,35 +187,42 @@
     },
     "Locators": [
       {
-        "Locator 1 label": "stipes",
-        "Locator 1 URI": "http://purl.obolibrary.org/obo/HAO_0000958"
+        "Locator 1 label": "labial palp",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/HAO_0000450"
       },
       {
-        "Locator 2 label": "basistipital process",
-        "Locator 2 URI": "http://purl.obolibrary.org/obo/HAO_0002090"
+        "Locator 2 label": "first labial palpomere",
+        "Locator 2 URI": null
+      },
+      {
+        "Locator 3 label": "proximal region",
+        "Locator 3 URI": "http://purl.obolibrary.org/obo/BSPO_0000077"
+      },
+      {
+        "Locator 4 label": "mesal margin",
+        "Locator 4 URI": null
       }
     ],
     "Variable": {
       "Variable label": "shape",
-      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000052",
-      "Variable comment": null
+      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000052"
     },
     "States": [
       {
-        "State 0 label": "shortened",
-        "State 0 URI": "http://purl.obolibrary.org/obo/PATO_0002364",
+        "State 0 label": "straight",
+        "State 0 URI": "http://purl.obolibrary.org/obo/PATO_0002180",
         "State 0 token": "0"
       },
       {
-        "State 1 label": "elongated",
-        "State 1 URI": "http://purl.obolibrary.org/obo/PATO_0001154",
+        "State 1 label": "incised",
+        "State 1 URI": "http://purl.obolibrary.org/obo/PATO_0001978",
         "State 1 token": "1"
       }
     ],
-    "Tag": "transformational"
+    "Tag": "transformational_simple"
   },
   {
-    "Char_ID": "C15",
+    "Char_ID": "C7",
     "Organism": {
       "Label": "adult organism",
       "URI": "http://purl.obolibrary.org/obo/UBERON_0007023"
@@ -87,95 +235,130 @@
       {
         "Locator 2 label": "galeal blade",
         "Locator 2 URI": null
-      },
-      {
-        "Locator 3 label": "posterior margin",
-        "Locator 3 URI": "http://purl.obolibrary.org/obo/BSPO_0000672"
       }
     ],
     "Variable": {
-      "Variable label": "composition",
-      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000025",
-      "Variable comment": null
+      "Variable label": "width",
+      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000921",
+      "Variable comment": "of mesal surface relative to lateral surface measured midway between base and apex"
     },
     "States": [
       {
-        "State 0 label": "sclerotized",
+        "State 0 label": "about the same",
         "State 0 URI": null,
         "State 0 token": "0"
       },
       {
-        "State 1 label": "desclerotized",
+        "State 1 label": "two-thirds or less",
         "State 1 URI": null,
+        "State 1 token": "1"
+      },
+      {
+        "State 2 label": "three-fourths or more, but narrower",
+        "State 2 URI": null,
+        "State 2 token": "2"
+      }
+    ],
+    "Tag": "transformational_complex"
+  },
+  {
+    "Char_ID": "C8",
+    "Organism": {
+      "Label": "female organism",
+      "URI": "http://purl.obolibrary.org/obo/UBERON_0003100"
+    },
+    "Locators": [
+      {
+        "Locator 1 label": "mandible",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/HAO_0000506"
+      },
+      {
+        "Locator 2 label": "pollex",
+        "Locator 2 URI": "http://purl.obolibrary.org/obo/HAO_0000739"
+      }
+    ],
+    "Variable": {
+      "Variable label": "degree of expansion",
+      "Variable URI": null
+    },
+    "States": [
+      {
+        "State 0 label": "not expanded",
+        "State 0 URI": null,
+        "State 0 token": "0"
+      },
+      {
+        "State 1 label": "expanded",
+        "State 1 URI": "http://purl.obolibrary.org/obo/PATO_0001602",
         "State 1 token": "1"
       }
     ],
-    "Tag": "transformational"
+    "Tag": "transformational_simple"
   },
   {
-    "Char_ID": "C16",
+    "Char_ID": "C9",
     "Organism": {
       "Label": "adult organism",
       "URI": "http://purl.obolibrary.org/obo/UBERON_0007023"
     },
     "Locators": [
       {
-        "Locator 1 label": "lacinia",
-        "Locator 1 URI": "http://purl.obolibrary.org/obo/AISM_0000026"
+        "Locator 1 label": "glossa",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/HAO_0000376"
       },
       {
-        "Locator 2 label": "surrounding cuticle",
+        "Locator 2 label": "glossal rod",
         "Locator 2 URI": null
       }
     ],
     "Variable": {
-      "Variable label": "texture",
-      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000150",
-      "Variable comment": null
+      "Variable label": "degree of enclosure",
+      "Variable URI": null,
+      "Variable comment": "of bacular canal"
     },
     "States": [
       {
-        "State 0 label": "smooth",
-        "State 0 URI": "http://purl.obolibrary.org/obo/PATO_0000701",
+        "State 0 label": "not enclosing",
+        "State 0 URI": null,
         "State 0 token": "0"
       },
       {
-        "State 1 label": "striate",
-        "State 1 URI": null,
+        "State 1 label": "enclosing",
+        "State 1 URI": "http://purl.obolibrary.org/obo/PATO_0001772",
         "State 1 token": "1"
       }
     ],
-    "Tag": "transformational"
+    "Tag": "transformational_complex"
   },
   {
-    "Char_ID": "C17",
+    "Char_ID": "C10",
     "Organism": {
       "Label": "adult organism",
       "URI": "http://purl.obolibrary.org/obo/UBERON_0007023"
     },
     "Locators": [
       {
-        "Locator 1 label": "lacinia",
-        "Locator 1 URI": "http://purl.obolibrary.org/obo/AISM_0000026"
+        "Locator 1 label": "lorum",
+        "Locator 1 URI": "http://purl.obolibrary.org/obo/HAO_0002150"
       }
     ],
     "Variable": {
-      "Variable label": "composition",
-      "Variable URI": "http://purl.obolibrary.org/obo/PATO_0000025",
-      "Variable comment": null
+      "Variable label": "degree of fusion",
+      "Variable URI": null,
+      "Variable comment": "with mentum"
     },
     "States": [
       {
-        "State 0 label": "sclerotized",
-        "State 0 URI": null,
+        "State 0 label": "fused",
+        "State 0 URI": "http://purl.obolibrary.org/obo/PATO_0000642",
         "State 0 token": "0"
       },
       {
-        "State 1 label": "membranous",
+        "State 1 label": "separated",
         "State 1 URI": null,
         "State 1 token": "1"
       }
     ],
-    "Tag": "transformational"
+    "Tag": "transformational_complex"
   }
 ]

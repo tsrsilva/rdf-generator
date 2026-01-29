@@ -3,8 +3,8 @@ data_dir: "data"
 
 input:
   json: "examples/minimal.json"
-  nex: "examples/minimal.nex"
-  species: "examples/species.json"
+  nex: "examples/reduced.nex"
+  species: "examples/sp_reduced.json"
   shacl: "shapes/shapes.ttl"
 
 output:

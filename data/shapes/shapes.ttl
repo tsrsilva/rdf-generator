@@ -26,6 +26,7 @@ phb:NeomorphicPhenotypeShape
     sh:property [
         sh:path phb:has_organismal_component ;
         sh:minCount 1 ;
+        sh:maxCount 1 ;
     ] ;
     
     sh:property [
@@ -47,6 +48,7 @@ phb:TransformationalSimplePhenotypeShape
     sh:property [
         sh:path phb:has_organismal_component ;
         sh:minCount 1 ;
+        sh:maxCount 1 ;
     ] ;
 
     sh:property [
@@ -55,8 +57,20 @@ phb:TransformationalSimplePhenotypeShape
     ] ;
 
     sh:property [
+    	sh:path phb:has_variable_component ;
+    	sh:minCount 1;
+    	sh:maxCount 1;
+    ] ;
+
+    sh:property [
    	sh:path rdfs:comment ;
     	sh:maxCount 0 ;
+    ] ;
+    
+    sh:property [
+    	sh:path phb:has_quality_component ;
+    	sh:minCount 1 ;
+    	sh:minCount 1 ;
     ] .
 
 # Transformational Complex: variable + comment required
@@ -68,6 +82,7 @@ phb:TransformationalComplexPhenotypeShape
     sh:property [
         sh:path phb:has_organismal_component ;
         sh:minCount 1 ;
+        sh:maxCount 1 ;
     ] ;
 
     sh:property [
@@ -76,14 +91,36 @@ phb:TransformationalComplexPhenotypeShape
     ] ;
 
     sh:property [
-        sh:path phb:has_variable_component ;
-        sh:minCount 1 ;
+    	sh:path phb:has_variable_component ;
+    	sh:minCount 1;
+    	sh:maxCount 1;
     ] ;
     
     sh:property [
     	sh:path rdfs:comment ;
     	sh:minCount 1 ;
+    ] ;
+        
+    sh:property [
+    	sh:path phb:has_quality_component ;
+    	sh:minCount 1 ;
+    	sh:minCount 1 ;
     ] .
+
+#################
+# Organism Shape
+#################
+
+# Organism individuals connected via phb:has_organismal_component: label required
+
+phb:OrganismNodeShape
+  a sh:NodeShape ;
+  sh:targetObjectsOf phb:has_organismal_component ;
+
+  sh:property [
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+  ] .
 
 ################
 # Locator Shape
@@ -106,19 +143,35 @@ phb:LocatorNodeShape
     sh:minCount 0 ;
   ] .
 
-#################
-# Organism Shape
-#################
+################
+# Variable Shape
+################
 
-# Organism individuals connected via phb:has_organismal_component: label required
-phb:OrganismNodeShape
+# Variable individuals (when they exist): label required
 
+phb:VariableNodeShape
   a sh:NodeShape ;
-  sh:targetObjectsOf phb:has_organismal_component ;
+  sh:targetObjectsOf phb:has_variable_component ;
 
   sh:property [
     sh:path rdfs:label ;
     sh:minCount 1 ;
+  ] .
+  
+################
+# Quality Shape
+################
+
+# Quality individuals: label required
+
+phb:QualityNodeShape
+  a sh:NodeShape ;
+  sh:targetObjectsOf phb:has_quality_component ;
+
+  sh:property [
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+    sh:maxCount 1 ;
   ] .
 
 #################
@@ -138,7 +191,7 @@ phb:CharacterShape
   
   sh:property [
     sh:path phb:may_have_state ;
-    sh:minCount 0 ;
+    sh:minCount 2 ;
   ] .
 
 #############
@@ -172,11 +225,13 @@ phb:CellShape
   sh:property [
     sh:path cdao:0000191 ; # belongsTo TU
     sh:minCount 1 ;
+    sh:maxCont 1 ;
   ] ;
 
   sh:property [
     sh:path cdao:0000205 ; # belongsTo Character
     sh:minCount 1 ;
+    sh:maxCount 1 ;
   ] ;
 
   sh:property [
