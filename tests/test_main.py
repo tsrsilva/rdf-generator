@@ -47,16 +47,14 @@ def test_main_runs(monkeypatch):
     try:
         # Define new temporary paths
         out_combined = os.path.join(temp_dir.name, "combined_graphs")
-        out_graphviz = os.path.join(temp_dir.name, "graphviz_images")
         out_validation = os.path.join(temp_dir.name, "validation_reports")
 
         # Ensure directories exist before running
-        for path in [out_combined, out_graphviz, out_validation]:
+        for path in [out_combined, out_validation]:
             os.makedirs(path, exist_ok=True)
         
         # Monkeypatch the module variables
         monkeypatch.setattr(rdf_main, "DIR_COMBINED", out_combined)
-        monkeypatch.setattr(rdf_main, "DIR_GRAPHVIZ", out_graphviz)
         monkeypatch.setattr(rdf_main, "DIR_VALIDATION", out_validation)
 
         # Run the main() function — this should use the patched paths
