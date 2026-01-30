@@ -202,8 +202,8 @@ def build_base_graph() -> Graph:
 
     # Property declarations
     ## Object Properties
-    base.add((PHB.has_organismal_component, RDF.type, OWL.ObjectProperty))
-    base.add((PHB.has_organismal_component, RDFS.label, Literal("has organismal component")))
+    base.add((PHB.has_organism_component, RDF.type, OWL.ObjectProperty))
+    base.add((PHB.has_organism_component, RDFS.label, Literal("has organism component")))
     base.add((PHB.has_entity_component, RDF.type, OWL.ObjectProperty))
     base.add((PHB.has_entity_component, RDFS.label, Literal("has entity component")))
     base.add((PHB.has_variable_component, RDF.type, OWL.ObjectProperty))
@@ -969,7 +969,7 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
             RDF.type, 
             DWC.parentNameUsageID, 
             RDFS.seeAlso,
-            PHB.has_organismal_component,
+            PHB.has_organism_component,
             PHB.has_entity_component,
             PHB.has_variable_component,
             PHB.has_quality_component,
@@ -1124,14 +1124,14 @@ def prune_unreferenced_prototypes(g: Graph) -> Dict[str, int]:
     """
     Remove unreferenced prototype individuals:
       - Qualities: kb:qua-* that are not objects of phb:has_quality_component
-      - Organisms: kb:org-* that are not objects of phb:has_organismal_component
+      - Organisms: kb:org-* that are not objects of phb:has_organism_component
     Returns counts removed by kind.
     """
     KB_NS = str(KB)
     removed = {"qualities": 0, "organisms": 0, "total": 0}
 
     referenced_qualities = {o for _, _, o in g.triples((None, PHB.has_quality_component, None)) if isinstance(o, URIRef)}
-    referenced_organisms = {o for _, _, o in g.triples((None, PHB.has_organismal_component, None)) if isinstance(o, URIRef)}
+    referenced_organisms = {o for _, _, o in g.triples((None, PHB.has_organism_component, None)) if isinstance(o, URIRef)}
 
     candidates = list(set(g.subjects(RDF.type, OWL.NamedIndividual)))
     to_remove: List[Tuple[str, URIRef]] = []
@@ -1344,7 +1344,7 @@ def build_cdao_matrix(
                 g.add((matrix_uri, CDAO["0000208"], tu_uri))
 
                 if org_instance:
-                    g.add((ph_uri, PHB.has_organismal_component, org_instance))
+                    g.add((ph_uri, PHB.has_organism_component, org_instance))
                 for locator in locator_instances:
                     g.add((ph_uri, PHB.has_entity_component, locator))
 
