@@ -8,9 +8,21 @@ import uuid
 from typing import Optional, Tuple, Dict, Any, List
 
 import dendropy
-from rdflib import Graph, Namespace, URIRef, Literal
+from rdflib import Graph, Namespace, URIRef, Literal, BNode
 from rdflib.namespace import RDF, RDFS, OWL
 from pyshacl import validate
+import itertools
+
+# Global sequential counter for instance labels
+PHENOTYPE_COUNTER = itertools.count(1)
+ORGANISM_COUNTER = itertools.count(1)
+LOCATOR_COUNTER = itertools.count(1)
+VARIABLE_COUNTER = itertools.count(1)
+QUALITY_COUNTER = itertools.count(1)
+STATE_COUNTER = itertools.count(1)
+MATRIX_COUNTER = itertools.count(1)
+CHARACTER_COUNTER = itertools.count(1)
+CELL_COUNTER = itertools.count(1)
 
 # === CONFIGURATION ===
 # Load configuration from YAML file
@@ -453,7 +465,17 @@ def handle_organism(
     
     g.add((org_instance, RDF.type, org_uri))
     g.add((org_instance, RDF.type, OWL.NamedIndividual))
-    add_individual_triples(g, org_instance, org_label)
+
+    # Only add a sequential rdfs:label once to prevent multiple different labels
+    if not any(g.objects(org_instance, RDFS.label)):
+        seq_num = next(ORGANISM_COUNTER)
+        # Use the original org label as prefix for the id (e.g., "female organism:id-3")
+        prefix = org_label.strip() if org_label else "organism"
+        add_individual_triples(g, org_instance, f"{prefix}:id-{seq_num}")
+
+    # Preserve the human-friendly label as rdfs:comment if absent
+    if not any(g.objects(org_instance, RDFS.comment)):
+        g.add((org_instance, RDFS.comment, Literal(org_label)))
 
     return org_instance
 
@@ -511,7 +533,16 @@ def handle_locator(
         g.add((class_uri, RDF.type, OWL.Class))
         g.add((current_instance, RDF.type, class_uri))
 
-    add_individual_triples(g, current_instance, label)
+    # Add a single sequential rdfs:label only if none exists to avoid duplicates
+    if not any(g.objects(current_instance, RDFS.label)):
+        seq_num = next(LOCATOR_COUNTER)
+        # Use the original locator label as prefix for the id (e.g., "labrum:id-5")
+        prefix_loc = label.strip() if label else "locator"
+        add_individual_triples(g, current_instance, f"{prefix_loc}:id-{seq_num}")
+        
+    # Keep the original locator label as a comment if absent
+    if not any(g.objects(current_instance, RDFS.comment)):
+        g.add((current_instance, RDFS.comment, Literal(label)))
 
     # --- Chain anatomy ---
     g.add((parent_instance, BFO["0000051"], current_instance))  # previous → has_part → current
@@ -665,7 +696,16 @@ def handle_variable_component(
     var_uuid_seed = "::".join(seed_components)
     var_instance_uri = generate_uri("var", var_uuid_seed)
 
-    add_individual_triples(g, var_instance_uri, var_label)
+    # Add a single sequential label only if none exists
+    if not any(g.objects(var_instance_uri, RDFS.label)):
+        seq_num = next(VARIABLE_COUNTER)
+        # Use the original variable label as prefix for the id (e.g., "shape:id-1")
+        prefix_var = var_label.strip() if var_label else "variable"
+        add_individual_triples(g, var_instance_uri, f"{prefix_var}:id-{seq_num}")
+        
+    # Preserve the original variable label for readability as comment
+    if not any(g.objects(var_instance_uri, RDFS.comment)):
+        g.add((var_instance_uri, RDFS.comment, Literal(var_label)))
 
     if var_data.get("Variable URI"):
         var_uri = URIRef(var_data["Variable URI"])
@@ -711,7 +751,13 @@ def handle_quality(
             g.add((URIRef(uri), RDF.type, OWL.Class))
             g.add((URIRef(uri), RDFS.label, Literal(label)))
             g.add((quality_node, RDF.type, URIRef(uri)))
-        add_individual_triples(g, quality_node, label)
+        # Add a single sequential label only if none exists
+        if not any(g.objects(quality_node, RDFS.label)):
+            seq_num = next(QUALITY_COUNTER)
+            add_individual_triples(g, quality_node, f"quality:id-{seq_num}")
+        # Keep human-friendly label as comment if absent
+        if not any(g.objects(quality_node, RDFS.comment)):
+            g.add((quality_node, RDFS.comment, Literal(label)))
 
         # Link quality to character
         quality_map_for_char[quality_index] = str(quality_node)
@@ -725,8 +771,11 @@ def handle_states(
 ) -> Dict[int, str]:
     """
     Add RDF triples for 'States'. Returns a map of index -> state node URI (str).
-    Negations like "not X" or "absent X" are normalized into positive
-    absence-style labels (e.g., "X absent"), avoiding owl:complementOf.
+    Negations like "not X" are modeled as instances of an anonymous class that is
+    the complement of a restriction: NOT (has_part some X).
+    
+    For negated states without their own URI, we look up the URI of the positive
+    counterpart (e.g., "not U-shaped" looks up "U-shaped") in the global state_label_to_uri.
     """
     state_map_for_char: Dict[int, str] = {}
 
@@ -735,21 +784,66 @@ def handle_states(
         uri = next((v for k, v in state.items() if 'uri' in k.lower() and v), None)
 
         normalized_label = label.lower()
-        # Detect negations
-        if normalized_label.startswith("not "):
+        # Detect negations (e.g., "not U-shaped")
+        is_negation = normalized_label.startswith("not ")
+        resolved_uri = uri  # will be used for complement restriction if negation
+        base_label = None
+
+        if is_negation:
             base_label = label[4:].strip()
             label = f"not {base_label}"
+
+            # If this negation entry lacks a URI, look up the positive counterpart's URI
+            if not uri:
+                base_label_normalized = base_label.strip().lower()
+                resolved_uri = state_label_to_uri.get(base_label_normalized)
 
         # UUID for state
         state_node = generate_uri("sta", f"{data['Char_ID']}_{uri or label.lower()}")
 
         g.add((state_node, RDF.type, CDAO["0000045"]))  # CDAO State
 
-        # Only type as CDAO State; do not also type as a quality class
-        add_individual_triples(g, state_node, label)
+        # Add human-readable label (sequential id label + original label as comment) only if absent
+        if not any(g.objects(state_node, RDFS.label)):
+            seq_num = next(STATE_COUNTER)
+            prefix_sta = label.strip() if label else "state"
+            add_individual_triples(g, state_node, f"{prefix_sta}:id-{seq_num}")
+        if not any(g.objects(state_node, RDFS.comment)):
+            g.add((state_node, RDFS.comment, Literal(label)))
+
+        # If this is a negation with a resolved URI, model as:
+        # state_node rdf:type [owl:complementOf [owl:Restriction ; owl:onProperty BFO:0000051 ; owl:someValuesFrom <uri>]]
+        if is_negation and resolved_uri:
+            # Create deterministic/skolemized nodes for the inner restriction and complement class
+            # Use the resolved URI as the seed so the generated URIs are stable across runs/files
+            seed = str(resolved_uri)
+            inner_restriction = generate_uri("restr", seed)
+            # Prefer to show the positive target label (base label or rdfs:label of the resolved URI)
+            if base_label:
+                display_target = base_label
+            else:
+                lbl = next((str(o) for o in g.objects(URIRef(resolved_uri), RDFS.label)), None)
+                display_target = lbl if lbl else str(resolved_uri)
+
+            # Use the positive target in the inner restriction label (explicit form: has_part some X)
+            g.add((inner_restriction, RDFS.label, Literal(f"has_part some {display_target}")))
+            g.add((inner_restriction, RDF.type, OWL.Restriction))
+            g.add((inner_restriction, OWL.onProperty, BFO["0000051"]))  # has_part
+            g.add((inner_restriction, OWL.someValuesFrom, URIRef(resolved_uri)))
+
+            # Create the complement class: NOT (has_part some <uri>) using a stable URI
+            complement_class = generate_uri("comp", seed)
+            g.add((complement_class, OWL.complementOf, inner_restriction))
+            g.add((complement_class, RDFS.label, Literal(f"NOT (has_part some {display_target})")))
+
+            # Assert the state instance as an instance of the complement class
+            g.add((state_node, RDF.type, complement_class))
+
+        # Labels and comments already added above (idempotent)
 
         # Link state to character
         state_map_for_char[state_index] = str(state_node)
+
 
     return state_map_for_char
 
@@ -783,7 +877,10 @@ def process_phenotype(
     # Character class definition
     char_uri = generate_uri("char", f"char_{char_id}")
     g.add((char_uri, RDF.type, CDAO["0000075"]))  # CDAO Character
-    g.add((char_uri, RDFS.label, Literal(char_label)))
+    seq_num = next(CHARACTER_COUNTER)
+    g.add((char_uri, RDFS.label, Literal(f"{char_label}:id-{seq_num}")))
+    # Keep original character label as a comment
+    g.add((char_uri, RDFS.comment, Literal(char_label)))
     g.add((char_uri, RDF.type, OWL.NamedIndividual))
 
     # States: build state nodes and register allowed states per Character
@@ -849,6 +946,35 @@ def validate_graph_and_record(
     write_validation_results(entity_id, conforms, results_graph, results_text,
                              combined_report_graph, validation_dir)
     return conforms
+
+def apply_matrix_label_priority(matrix_graph: Graph, target_graph: Graph) -> int:
+    """Apply authoritative rdfs:label values from `matrix_graph` onto `target_graph`.
+
+    For each subject present in `target_graph`, if `matrix_graph` contains
+    one or more `rdfs:label` values for the same subject, replace any
+    existing `rdfs:label` triples in `target_graph` with the first label
+    found in `matrix_graph`.
+
+    Returns the number of subjects changed.
+    """
+    changes = 0
+    for subj in set(target_graph.subjects()):
+        pref_labels = [str(l) for l in matrix_graph.objects(subj, RDFS.label)]
+        if not pref_labels:
+            continue
+        preferred = pref_labels[0]
+        existing = list(target_graph.objects(subj, RDFS.label))
+        if not existing:
+            target_graph.add((subj, RDFS.label, Literal(preferred)))
+            changes += 1
+        else:
+            texts = [str(l) for l in existing]
+            if not (len(texts) == 1 and texts[0] == preferred):
+                for l in existing:
+                    target_graph.remove((subj, RDFS.label, l))
+                target_graph.add((subj, RDFS.label, Literal(preferred)))
+                changes += 1
+    return changes
 
 def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
     """Write TTL grouped into Classes, Individuals (grouped), Properties, and Other."""
@@ -1240,7 +1366,10 @@ def build_cdao_matrix(
     mx_label = row.get("MatrixLabel")
     matrix_uri = generate_uri("mx", mx_label or "default_matrix")
     g.add((matrix_uri, RDF.type, CDAO["0000056"]))  # CDAO Matrix/CharacterStateDataMatrix
-    g.add((matrix_uri, RDFS.label, Literal("matrix")))
+    # Add sequential label only if not set already
+    if not any(g.objects(matrix_uri, RDFS.label)):
+        seq_num = next(MATRIX_COUNTER)
+        g.add((matrix_uri, RDFS.label, Literal(f"matrix:id-{seq_num}")))
     g.add((matrix_uri, DC.description, Literal("matrix description")))
     g.add((matrix_uri, RDF.type, OWL.NamedIndividual))
 
@@ -1270,9 +1399,12 @@ def build_cdao_matrix(
             # UUID-based cell
             cell_uri = generate_uri("cell", f"{taxon.label}_{char_index}")
 
-            # UUID-based TU (for consistency)
-            # tu_uri = generate_uri("tu", taxon.label)
-
+            # Sequential label for cell instances (only if not already present)
+            if not any(g.objects(cell_uri, RDFS.label)):
+                seq_num = next(CELL_COUNTER)
+                g.add((cell_uri, RDFS.label, Literal(f"cell:id-{seq_num}")))
+            if not any(g.objects(cell_uri, DC.description)):
+                g.add((cell_uri, DC.description, Literal(f"Cell for taxon {taxon.label}, character {char_id}")))
             g.add((cell_uri, RDF.type, OWL.NamedIndividual))
             g.add((cell_uri, RDF.type, CDAO["0000008"]))  # CDAO Cell
             # CDAO belongs to TU: added after minting organism-specific TU later in the loop
@@ -1318,7 +1450,10 @@ def build_cdao_matrix(
                 # Minimal typing/label for the cell-specific phenotype
                 g.add((ph_uri, KB.sortCharNum, Literal(parse_char_num(char_id), datatype=XSD.integer)))
                 g.add((ph_uri, KB.sortSpecies, Literal(taxon.label)))
-                add_individual_triples(g, ph_uri, f"Phenotype statement for {char_data.get('CharacterLabel', char_id)} in {taxon.label}")
+                g.add((ph_uri, DC.description, Literal(f"Phenotype statement for {char_data.get('CharacterLabel', char_id)} in {taxon.label}")))
+                # Sequential, human-friendly label for phenotype instances
+                seq_num = next(PHENOTYPE_COUNTER)
+                add_individual_triples(g, ph_uri, f"phenotype:id-{seq_num}")
 
                 # Assign statement class based on Variable section
                 variable_data = char_data.get("Variable")
@@ -1337,7 +1472,7 @@ def build_cdao_matrix(
                 tu_uri = generate_uri("tu", tu_seed)
                 g.add((tu_uri, RDF.type, OWL.NamedIndividual))
                 g.add((tu_uri, RDF.type, CDAO["0000138"]))
-                g.add((tu_uri, RDFS.label, Literal(str(taxon.label))))
+
                 if org_instance is not None:
                     g.add((org_instance, RO["0003301"], tu_uri))
                 g.add((cell_uri, CDAO["0000191"], tu_uri))
@@ -1427,8 +1562,9 @@ def enrich_tu_graph(
     author = parts[2] if len(parts) == 3 else ""
     valid_label_html = f"<i>{binomial}</i> {author}".strip()
 
-    # TU assertions
-    add_individual_triples(tu_graph, tu_uri, valid_label_html)
+    # TU assertions: assign TU name as taxon_label and keep human label as comment
+    add_individual_triples(tu_graph, tu_uri, f"{taxon_label}")
+    tu_graph.add((tu_uri, RDFS.comment, Literal(valid_label_html)))
     # Only assert org_instance triples if we have a valid URIRef
     if org_instance is not None:
         tu_graph.add((org_instance, RDF.type, OWL.NamedIndividual))
@@ -1621,6 +1757,13 @@ def main():
     write_ttl_with_sections(matrix_graph, matrix_ttl)
 
     chars_ttl = os.path.join(DIR_COMBINED, "characters_combined.ttl")
+    # Ensure matrix labels are authoritative for character graph
+    try:
+        changes = apply_matrix_label_priority(matrix_graph, combined_char_graph)
+        if changes:
+            print(f"[INFO] Applied matrix label priority to character graph ({changes} subjects updated)")
+    except Exception as e:
+        print(f"[WARN] Failed to apply matrix label priority to character graph: {e}")
     write_ttl_with_sections(combined_char_graph, chars_ttl)
 
     species_ttl = os.path.join(DIR_COMBINED, "species_combined.ttl")
@@ -1655,6 +1798,13 @@ def main():
     prune_unreferenced_prototypes(final_graph)
 
     merged_ttl = os.path.join(DIR_COMBINED, "all_combined.ttl")
+    # Ensure matrix labels are authoritative in the final merged graph as well
+    try:
+        changes = apply_matrix_label_priority(matrix_graph, final_graph)
+        if changes:
+            print(f"[INFO] Applied matrix label priority to merged graph ({changes} subjects updated)")
+    except Exception as e:
+        print(f"[WARN] Failed to apply matrix label priority to merged graph: {e}")
     write_ttl_with_sections(final_graph, merged_ttl)
     print(f"[OK] Full combined TTL → {merged_ttl}")
 
