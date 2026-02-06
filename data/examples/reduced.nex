@@ -4,13 +4,13 @@ BEGIN DATA;
 	DIMENSIONS  NTAX=7 NCHAR=10;
 	FORMAT DATATYPE = STANDARD RESPECTCASE GAP = - MISSING = ? SYMBOLS = "01";
 	MATRIX			   
-	'Arhysoceble_picta'        0100011000
 	'Ancyloscelis_apiformis'   0101001000
-	'Diadasina_distincta'      0101011000
-	'Partamona_cupira'         0100001110
-	'Euglossa_cordata'         0101001100
 	'Anthidium_porterae'       1101001101
+	'Arhysoceble_picta'        0100011000
 	'Coelioxys_octodentata'    1101001101
+	'Diadasina_distincta'      0101011000
+	'Euglossa_cordata'         0101001100
+	'Partamona_cupira'         0100001110	
 
 ;
 END;
