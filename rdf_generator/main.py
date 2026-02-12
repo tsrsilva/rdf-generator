@@ -721,11 +721,10 @@ def handle_variable_component(
 def handle_quality(
     g: Graph,
     data: Dict[str, Any]
-    # final_component: Optional[URIRef] = None
 ) -> Dict[int, str]:
     """
     Add RDF triples for 'Qualities'. Returns a map of index -> quality node URI (str).
-    Negations like "not X" or "absent X" are normalized into positive
+    Negations like "not X" are normalized into positive
     absence-style labels (e.g., "X absent"), avoiding owl:complementOf.
     """
     quality_map_for_char: Dict[int, str] = {}
@@ -767,15 +766,15 @@ def handle_quality(
 def handle_states(
     g: Graph,
     data: Dict[str, Any]
-    # final_component: Optional[URIRef] = None
 ) -> Dict[int, str]:
     """
     Add RDF triples for 'States'. Returns a map of index -> state node URI (str).
-    Negations like "not X" are modeled as instances of an anonymous class that is
+    Negations like "not X" or "absent" are modeled as instances of an anonymous class that is
     the complement of a restriction: NOT (has_part some X).
     
-    For negated states without their own URI, we look up the URI of the positive
-    counterpart (e.g., "not U-shaped" looks up "U-shaped") in the global state_label_to_uri.
+    For negated states without their own URI:
+        - "not X": look up URI or "X" in state_label_uri
+        - "absent": look up URI of "present" in the same character
     """
     state_map_for_char: Dict[int, str] = {}
 
@@ -784,20 +783,38 @@ def handle_states(
         uri = next((v for k, v in state.items() if 'uri' in k.lower() and v), None)
 
         normalized_label = label.lower()
-        # Detect negations (e.g., "not U-shaped")
-        is_negation = normalized_label.startswith("not ")
+        # Detect negations: "not X" or "absent"
+        is_negation = normalized_label.startswith("not ") or normalized_label == "absent"
         resolved_uri = uri  # will be used for complement restriction if negation
         base_label = None
 
         if is_negation:
-            base_label = label[4:].strip()
-            label = f"not {base_label}"
+            if normalized_label.startswith("not "):
+                # "not X" pattern: extract base as "X"
+                base_label = label[4:].strip()
+                label = f"not {base_label}"
 
-            # If this negation entry lacks a URI, look up the positive counterpart's URI
-            if not uri:
-                base_label_normalized = base_label.strip().lower()
-                resolved_uri = state_label_to_uri.get(base_label_normalized)
+                # If this negation entry lacks a URI, look up the positive counterpart's URI
+                if not uri:
+                    base_label_normalized = base_label.strip().lower()
+                    resolved_uri = state_label_to_uri.get(base_label_normalized)
 
+            elif normalized_label == "absent":
+                # "absent" pattern: find "present" state in the same character and use its URI
+                base_label = "present"
+                if not uri:
+                    # Look for "present" in the same character's states
+                    for other_state in data.get("States", []) or []:
+                        other_label = next((v for k, v in other_state.items() if 'label' in k.lower()), "").strip().lower()
+                        if other_label == "present":
+                            other_uri = next((v for k, v in other_state.items() if 'uri' in k.lower() and v), None)
+                            if other_uri:
+                                resolved_uri = other_uri
+                                break
+                    # Fallback: check state_label_to_uri
+                    if not resolved_uri:
+                        resolved_uri = state_label_to_uri.get("present")
+        
         # UUID for state
         state_node = generate_uri("sta", f"{data['Char_ID']}_{uri or label.lower()}")
 
