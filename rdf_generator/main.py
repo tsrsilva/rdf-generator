@@ -474,8 +474,8 @@ def handle_organism(
         add_individual_triples(g, org_instance, f"{prefix}:id-{seq_num}")
 
     # Preserve the human-friendly label as rdfs:comment if absent
-    if not any(g.objects(org_instance, RDFS.comment)):
-        g.add((org_instance, RDFS.comment, Literal(org_label)))
+    # if not any(g.objects(org_instance, RDFS.comment)):
+        # g.add((org_instance, RDFS.comment, Literal(org_label)))
 
     return org_instance
 
@@ -541,8 +541,8 @@ def handle_locator(
         add_individual_triples(g, current_instance, f"{prefix_loc}:id-{seq_num}")
         
     # Keep the original locator label as a comment if absent
-    if not any(g.objects(current_instance, RDFS.comment)):
-        g.add((current_instance, RDFS.comment, Literal(label)))
+    # if not any(g.objects(current_instance, RDFS.comment)):
+        # g.add((current_instance, RDFS.comment, Literal(label)))
 
     # --- Chain anatomy ---
     g.add((parent_instance, BFO["0000051"], current_instance))  # previous → has_part → current
@@ -704,8 +704,8 @@ def handle_variable_component(
         add_individual_triples(g, var_instance_uri, f"{prefix_var}:id-{seq_num}")
         
     # Preserve the original variable label for readability as comment
-    if not any(g.objects(var_instance_uri, RDFS.comment)):
-        g.add((var_instance_uri, RDFS.comment, Literal(var_label)))
+    # if not any(g.objects(var_instance_uri, RDFS.comment)):
+        # g.add((var_instance_uri, RDFS.comment, Literal(var_label)))
 
     if var_data.get("Variable URI"):
         var_uri = URIRef(var_data["Variable URI"])
@@ -755,8 +755,8 @@ def handle_quality(
             seq_num = next(QUALITY_COUNTER)
             add_individual_triples(g, quality_node, f"quality:id-{seq_num}")
         # Keep human-friendly label as comment if absent
-        if not any(g.objects(quality_node, RDFS.comment)):
-            g.add((quality_node, RDFS.comment, Literal(label)))
+        # if not any(g.objects(quality_node, RDFS.comment)):
+            # g.add((quality_node, RDFS.comment, Literal(label)))
 
         # Link quality to character
         quality_map_for_char[quality_index] = str(quality_node)
@@ -800,18 +800,41 @@ def handle_states(
                     resolved_uri = state_label_to_uri.get(base_label_normalized)
 
             elif normalized_label == "absent":
-                # "absent" pattern: find "present" state in the same character and use its URI
-                base_label = "present"
-                if not uri:
-                    # Look for "present" in the same character's states
-                    for other_state in data.get("States", []) or []:
-                        other_label = next((v for k, v in other_state.items() if 'label' in k.lower()), "").strip().lower()
-                        if other_label == "present":
-                            other_uri = next((v for k, v in other_state.items() if 'uri' in k.lower() and v), None)
-                            if other_uri:
-                                resolved_uri = other_uri
-                                break
-                    # Fallback: check state_label_to_uri
+                # "absent" pattern: use the last locator in the locator chain as the
+                # target of the presence restriction (has_part some <locator>). If the
+                # last locator supplies a URI, use it; otherwise create a skolemized
+                # class for the locator label and use that.
+                base_label = None
+                resolved_uri = None
+                locs = data.get("Locators") or []
+                if isinstance(locs, list) and len(locs) > 0:
+                    last = locs[-1]
+                    last_label = next((v for k, v in last.items() if 'label' in k.lower()), None)
+                    last_uri = next((v for k, v in last.items() if 'uri' in k.lower() and v), None)
+                    if last_uri:
+                        resolved_uri = last_uri
+                        base_label = last_label if last_label else str(last_uri)
+                    elif last_label:
+                        # Create a skolemized class for the locator label so it can
+                        # be used as the someValuesFrom target (must be a Class IRI).
+                        seed = f"{data.get('Char_ID','') }::locator::{last_label.strip().lower()}"
+                        loc_class = generate_uri("locclass", seed)
+                        g.add((loc_class, RDF.type, OWL.Class))
+                        g.add((loc_class, RDFS.label, Literal(last_label)))
+                        resolved_uri = str(loc_class)
+                        base_label = last_label
+                # Fallback: if no locator-derived target was found, fall back to
+                # the original strategy of using the "present" state's URI (if any)
+                if not resolved_uri:
+                    base_label = "present"
+                    if not uri:
+                        for other_state in data.get("States", []) or []:
+                            other_label = next((v for k, v in other_state.items() if 'label' in k.lower()), "").strip().lower()
+                            if other_label == "present":
+                                other_uri = next((v for k, v in other_state.items() if 'uri' in k.lower() and v), None)
+                                if other_uri:
+                                    resolved_uri = other_uri
+                                    break
                     if not resolved_uri:
                         resolved_uri = state_label_to_uri.get("present")
         
@@ -825,8 +848,8 @@ def handle_states(
             seq_num = next(STATE_COUNTER)
             prefix_sta = label.strip() if label else "state"
             add_individual_triples(g, state_node, f"{prefix_sta}:id-{seq_num}")
-        if not any(g.objects(state_node, RDFS.comment)):
-            g.add((state_node, RDFS.comment, Literal(label)))
+        # if not any(g.objects(state_node, RDFS.comment)):
+            # g.add((state_node, RDFS.comment, Literal(label)))
 
         # If this is a negation with a resolved URI, model as:
         # state_node rdf:type [owl:complementOf [owl:Restriction ; owl:onProperty BFO:0000051 ; owl:someValuesFrom <uri>]]
@@ -855,8 +878,6 @@ def handle_states(
 
             # Assert the state instance as an instance of the complement class
             g.add((state_node, RDF.type, complement_class))
-
-        # Labels and comments already added above (idempotent)
 
         # Link state to character
         state_map_for_char[state_index] = str(state_node)
@@ -894,10 +915,7 @@ def process_phenotype(
     # Character class definition
     char_uri = generate_uri("char", f"char_{char_id}")
     g.add((char_uri, RDF.type, CDAO["0000075"]))  # CDAO Character
-    seq_num = next(CHARACTER_COUNTER)
-    g.add((char_uri, RDFS.label, Literal(f"{char_label}:id-{seq_num}")))
-    # Keep original character label as a comment
-    g.add((char_uri, RDFS.comment, Literal(char_label)))
+    g.add((char_uri, RDFS.label, Literal(f"{char_label}")))
     g.add((char_uri, RDF.type, OWL.NamedIndividual))
 
     # States: build state nodes and register allowed states per Character
