@@ -1,0 +1,131 @@
+# SPDX-FileCopyrightText: 2025 Thiago S. R. Silva, Diego S. Porto
+# SPDX-License-Identifier: MIT
+
+name: Remote Pipeline
+
+permissions:
+  contents: write
+  packages: write
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      push_image:
+        description: Push the Docker image to Docker Hub during a manual run
+        required: false
+        default: false
+        type: boolean
+      image_tag:
+        description: Optional Docker tag override for manual runs
+        required: false
+        type: string
+
+env:
+  CONDA_ENV_NAME: tool2_env
+  LOCAL_IMAGE_NAME: rdf-generator
+
+jobs:
+  test-build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Conda environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: tool2_env
+          auto-activate-base: false
+          environment-file: environment.yml
+
+      - name: Install package
+        shell: bash -el {0}
+        run: pip install -e .
+
+      - name: Run tests
+        shell: bash -el {0}
+        run: pytest tests/ --maxfail=1 --disable-warnings -v
+
+      - name: Resolve image tag
+        id: image_tag
+        shell: bash -el {0}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            TAG="$(python -m semantic_release version --print)"
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "${{ inputs.image_tag }}" ]]; then
+            TAG="${{ inputs.image_tag }}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="test"
+          else
+            TAG="pr-${GITHUB_SHA::7}"
+          fi
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Tag commit
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          VERSION: ${{ steps.image_tag.outputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${VERSION} already exists, skipping."
+          else
+            git tag -a "v${VERSION}" -m "Release ${VERSION}"
+            git push "https://${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" --tags
+          fi
+
+      - name: Build Docker image
+        env:
+          VERSION: ${{ steps.image_tag.outputs.tag }}
+        run: docker build -t ${LOCAL_IMAGE_NAME}:latest -t ${LOCAL_IMAGE_NAME}:${VERSION} .
+
+      - name: Validate Docker Compose build
+        run: |
+          docker compose -f docker-compose.yml config
+          docker compose -f docker-compose.yml build
+
+      - name: Run container smoke test
+        run: docker compose -f docker-compose.yml run --rm rdf-generator
+
+      - name: Validate Docker Hub credentials
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.push_image)
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          if [[ -z "${DOCKER_USERNAME}" || -z "${DOCKER_PASSWORD}" ]]; then
+            echo "Docker Hub credentials are required to push images."
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.push_image)
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push Docker image
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.push_image)
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          VERSION: ${{ steps.image_tag.outputs.tag }}
+        run: |
+          docker tag ${LOCAL_IMAGE_NAME}:${VERSION} ${DOCKER_USERNAME}/${LOCAL_IMAGE_NAME}:${VERSION}
+          docker push ${DOCKER_USERNAME}/${LOCAL_IMAGE_NAME}:${VERSION}
+
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            docker tag ${LOCAL_IMAGE_NAME}:${VERSION} ${DOCKER_USERNAME}/${LOCAL_IMAGE_NAME}:latest
+            docker push ${DOCKER_USERNAME}/${LOCAL_IMAGE_NAME}:latest
+          fi
