@@ -137,6 +137,10 @@ root/
 └── run.sh                  # Helper script to build/run the Docker container with proper mounts
 ```
 
+## Example data
+
+Minimal example data files can be found at the ```data/examples``` folder. The folder has three files: ```species.json```, ```minimal.json```, and ```minimal.nex```. The ```species.json``` is a nested species list obtained from the ![Tax Report](https://github.com/tsrsilva/checker) tool and contains species names validated against GBIF's backbone taxonomy, along with GBIF's identifiers. The ```minimal.json``` is a nested chracter list obtained from the ![Phylo Parser](https://github.com/tsrsilva/phylo-parser) tool and contains entity and quality terms annotated to ontology classes. The ```minimal.nex``` is a NEXUS file modified from Roig-Alsina & Michener's (1993) phylogenetic matrix.
+
 ## License
 
 Licensed under the [MIT License](/LICENSES/MIT.txt)
