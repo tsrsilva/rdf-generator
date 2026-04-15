@@ -4,7 +4,7 @@ data_dir: "data"
 input:
   json: "examples/minimal.json"
   nex: "examples/minimal.nex"
-  species: "examples/species.json.json"
+  species: "examples/species.json"
   shacl: "shapes/shapes.ttl"
 
 output:
