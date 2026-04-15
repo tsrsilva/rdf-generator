@@ -102,6 +102,16 @@
     
 
 
+    <!-- https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000032 -->
+
+    <owl:ObjectProperty rdf:about="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000032">
+        <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">may_have_state</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PHB:0000032</oboInOwl:id>
+        <rdfs:domain rdf:resource="http://purl.obolibrary.org/obo/CDAO_0000075"/>
+        <rdfs:range rdf:resource="http://purl.obolibrary.org/obo/CDAO_0000045"/>
+        <obo:IAO_0000427 rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</obo:IAO_0000427>
+    </owl:ObjectProperty>
+
     <!-- 
     ///////////////////////////////////////////////////////////////////////////////////////
     //

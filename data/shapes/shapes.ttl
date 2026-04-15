@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 @prefix sh: <http://www.w3.org/ns/shacl#> .
-@prefix phb: <http://www.phenobees.org/ontology#> .
+@prefix phb: <https://raw.githubusercontent.com/tsrsilva/rdf-generator/refs/heads/dev/data/ontologies/PHB_> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix cdao: <http://purl.obolibrary.org/obo/CDAO_> .
@@ -21,21 +21,21 @@
 
 phb:NeomorphicPhenotypeShape
     a sh:NodeShape ;
-    sh:targetClass phb:NeomorphicPhenotypeStatement ;
+    sh:targetClass phb:0000021 ;
     
     sh:property [
-        sh:path phb:has_organismal_component ;
+        sh:path phb:0000002 ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
     ] ;
     
     sh:property [
-        sh:path phb:has_entity_component ;
+        sh:path phb:0000001 ;
         sh:minCount 1 ;
     ] ;
 
     sh:property [
-        sh:path phb:has_variable_component ;
+        sh:path phb:0000004 ;
         sh:maxCount 0 ; 
     ] .
 
@@ -43,21 +43,21 @@ phb:NeomorphicPhenotypeShape
 
 phb:TransformationalSimplePhenotypeShape
     a sh:NodeShape ;
-    sh:targetClass phb:TransformationalSimplePhenotypeStatement ;
+    sh:targetClass phb:0000022 ;
 
     sh:property [
-        sh:path phb:has_organismal_component ;
+        sh:path phb:0000002 ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
     ] ;
 
     sh:property [
-        sh:path phb:has_entity_component ;
+        sh:path phb:0000001 ;
         sh:minCount 1 ;
     ] ;
 
     sh:property [
-    	sh:path phb:has_variable_component ;
+    	sh:path phb:0000004 ;
     	sh:minCount 1;
     	sh:maxCount 1;
     ] ;
@@ -68,7 +68,7 @@ phb:TransformationalSimplePhenotypeShape
     ] ;
     
     sh:property [
-    	sh:path phb:has_quality_component ;
+    	sh:path phb:0000003 ;
     	sh:minCount 1 ;
     	sh:minCount 1 ;
     ] .
@@ -77,21 +77,21 @@ phb:TransformationalSimplePhenotypeShape
 
 phb:TransformationalComplexPhenotypeShape
     a sh:NodeShape ;
-    sh:targetClass phb:TransformationalComplexPhenotypeStatement ;
+    sh:targetClass phb:0000023 ;
 
     sh:property [
-        sh:path phb:has_organismal_component ;
+        sh:path phb:0000002 ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
     ] ;
 
     sh:property [
-        sh:path phb:has_entity_component ;
+        sh:path phb:0000001 ;
         sh:minCount 1 ;
     ] ;
 
     sh:property [
-    	sh:path phb:has_variable_component ;
+    	sh:path phb:0000004 ;
     	sh:minCount 1;
     	sh:maxCount 1;
     ] ;
@@ -102,7 +102,7 @@ phb:TransformationalComplexPhenotypeShape
     ] ;
         
     sh:property [
-    	sh:path phb:has_quality_component ;
+    	sh:path phb:0000003 ;
     	sh:minCount 1 ;
     	sh:minCount 1 ;
     ] .
@@ -111,11 +111,11 @@ phb:TransformationalComplexPhenotypeShape
 # Organism Shape
 #################
 
-# Organism individuals connected via phb:has_organismal_component: label required
+# Organism individuals connected via phb:has_organism_component: label required
 
 phb:OrganismNodeShape
   a sh:NodeShape ;
-  sh:targetObjectsOf phb:has_organismal_component ;
+  sh:targetObjectsOf phb:0000002 ;
 
   sh:property [
     sh:path rdfs:label ;
@@ -131,7 +131,7 @@ phb:OrganismNodeShape
 
 phb:LocatorNodeShape
   a sh:NodeShape ;
-  sh:targetObjectsOf phb:has_entity_component ;
+  sh:targetObjectsOf phb:0000001 ;
 
   sh:property [
     sh:path rdfs:label ;
@@ -151,7 +151,7 @@ phb:LocatorNodeShape
 
 phb:VariableNodeShape
   a sh:NodeShape ;
-  sh:targetObjectsOf phb:has_variable_component ;
+  sh:targetObjectsOf phb:0000004 ;
 
   sh:property [
     sh:path rdfs:label ;
@@ -166,7 +166,7 @@ phb:VariableNodeShape
 
 phb:QualityNodeShape
   a sh:NodeShape ;
-  sh:targetObjectsOf phb:has_quality_component ;
+  sh:targetObjectsOf phb:0000003 ;
 
   sh:property [
     sh:path rdfs:label ;
@@ -190,7 +190,7 @@ phb:CharacterShape
   ] ;
   
   sh:property [
-    sh:path phb:may_have_state ;
+    sh:path phb:0000032 ;
     sh:minCount 2 ;
   ] .
 
@@ -241,7 +241,7 @@ phb:CellShape
   ] ;
 
   sh:property [
-    sh:path phb:refers_to_phenotype_statement ;
+    sh:path phb:0000005 ;
     sh:minCount 1 ;
   ] .
 

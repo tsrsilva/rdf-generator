@@ -73,7 +73,7 @@ IAO = Namespace("http://purl.obolibrary.org/obo/IAO_")
 KB = Namespace("http://www.phenobees.org/kb#")
 OBO = Namespace("http://purl.obolibrary.org/obo#")
 PATO = Namespace("http://purl.obolibrary.org/obo/PATO_")
-PHB = Namespace("https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/PHB_")
+PHB = Namespace("https://raw.githubusercontent.com/tsrsilva/rdf-generator/refs/heads/dev/data/ontologies/PHB_")
 RO = Namespace("http://purl.obolibrary.org/obo/RO_")
 TXR = Namespace("http://purl.obolibrary.org/obo/TAXRANK_")
 UBERON = Namespace("http://purl.obolibrary.org/obo/UBERON_")
@@ -103,11 +103,11 @@ def add_individual_triples(g: Graph, entity: URIRef, label: str) -> None:
 def assign_statement_type(g: Graph, entity: URIRef, variable_data: Optional[Dict]) -> None:
     """Centralized logic for assigning statement types based on variable data"""
     if not variable_data:
-        g.add((entity, RDF.type, PHB.NeomorphicStatement))
+        g.add((entity, RDF.type, PHB["0000021"]))
     elif variable_data.get("Variable comment"):
-        g.add((entity, RDF.type, PHB.TransformationalComplexStatement))
+        g.add((entity, RDF.type, PHB["0000023"]))
     else:
-        g.add((entity, RDF.type, PHB.TransformationalSimpleStatement))
+        g.add((entity, RDF.type, PHB["0000022"]))
 
 # Robust Char_ID → integer parser for sorting; never raises.
 # Returns a large default when parsing fails, ensuring deterministic ordering.
@@ -199,26 +199,26 @@ def build_base_graph() -> Graph:
     base.add((CDAO["0000075"], RDFS.label, Literal("standard character")))
     base.add((CDAO["0000138"], RDFS.label, Literal("TU")))
 
-    base.add((PHB.NeomorphicStatement, RDF.type, OWL.Class))
-    base.add((PHB.TransformationalSimpleStatement, RDF.type, OWL.Class))
-    base.add((PHB.TransformationalComplexStatement, RDF.type, OWL.Class))
+    base.add((PHB["0000021"], RDF.type, OWL.Class))
+    base.add((PHB["0000022"], RDF.type, OWL.Class))
+    base.add((PHB["0000023"], RDF.type, OWL.Class))
 
-    base.add((PHB.NeomorphicStatement, RDFS.label, Literal("Neomorphic Statement")))
-    base.add((PHB.TransformationalSimpleStatement, RDFS.label, Literal("Transformational Simple Statement")))
-    base.add((PHB.TransformationalComplexStatement, RDFS.label, Literal("Transformational Complex Statement")))
+    base.add((PHB["0000021"], RDFS.label, Literal("Neomorphic Statement")))
+    base.add((PHB["0000022"], RDFS.label, Literal("Transformational Simple Statement")))
+    base.add((PHB["0000023"], RDFS.label, Literal("Transformational Complex Statement")))
 
     # Property declarations
     ## Object Properties
-    base.add((PHB.has_organism_component, RDF.type, OWL.ObjectProperty))
-    base.add((PHB.has_organism_component, RDFS.label, Literal("has organism component")))
-    base.add((PHB.has_entity_component, RDF.type, OWL.ObjectProperty))
-    base.add((PHB.has_entity_component, RDFS.label, Literal("has entity component")))
-    base.add((PHB.has_variable_component, RDF.type, OWL.ObjectProperty))
-    base.add((PHB.has_variable_component, RDFS.label, Literal("has variable component")))
-    base.add((PHB.has_quality_component, RDF.type, OWL.ObjectProperty))
-    base.add((PHB.has_quality_component, RDFS.label, Literal("has quality component")))
-    base.add((PHB.refers_to_phenotype_statement, RDF.type, OWL.ObjectProperty))
-    base.add((PHB.refers_to_phenotype_statement, RDFS.label, Literal("refers to phenotype statement")))
+    base.add((PHB["0000002"], RDF.type, OWL.ObjectProperty))
+    base.add((PHB["0000002"], RDFS.label, Literal("has organism component")))
+    base.add((PHB["0000001"], RDF.type, OWL.ObjectProperty))
+    base.add((PHB["0000001"], RDFS.label, Literal("has entity component")))
+    base.add((PHB["0000004"], RDF.type, OWL.ObjectProperty))
+    base.add((PHB["0000004"], RDFS.label, Literal("has variable component")))
+    base.add((PHB["0000003"], RDF.type, OWL.ObjectProperty))
+    base.add((PHB["0000003"], RDFS.label, Literal("has quality component")))
+    base.add((PHB["0000005"], RDF.type, OWL.ObjectProperty))
+    base.add((PHB["0000005"], RDFS.label, Literal("refers to phenotype statement")))
     base.add((CDAO["0000142"], RDF.type, OWL.ObjectProperty))
     base.add((CDAO["0000142"], RDFS.label, Literal("has_Character")))
     base.add((CDAO["0000184"], RDF.type, OWL.ObjectProperty))
@@ -863,7 +863,7 @@ def process_phenotype(
     # Catalog allowed states at the Character level only
     for idx, state_uri in state_map_for_char.items():
 
-        g.add((char_uri, PHB.may_have_state, URIRef(state_uri)))
+        g.add((char_uri, PHB["0000032"], URIRef(state_uri)))
         print(f"[DEBUG] {char_label} (ID {char_id}) may_have_state -> {state_uri}")
 
     # Species Graph
@@ -872,7 +872,7 @@ def process_phenotype(
     species_id = row.get("SpeciesID")
     if sp_label and species_id:
         sp_uri = generate_uri("sp", sp_label)
-        sp_g.add((sp_uri, RDF.type, PHB.Species))
+        sp_g.add((sp_uri, RDF.type, TXR["0000006"]))
         sp_g.add((sp_uri, RDFS.label, Literal(sp_label)))
         sp_g.add((sp_uri, DWC.parentNameUsageID, URIRef(f"https://www.gbif.org/species/{species_id}")))
         print(f"[DEBUG] Species graph for {sp_label} has {len(sp_g)} triples:")
@@ -1086,12 +1086,12 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
             RDF.type, 
             DWC.parentNameUsageID, 
             RDFS.seeAlso,
-            PHB.has_organism_component,
-            PHB.has_entity_component,
-            PHB.has_variable_component,
-            PHB.has_quality_component,
-            PHB.may_have_state,
-            PHB.refers_to_phenotype_statement,
+            PHB["0000002"], # has_organism_component
+            PHB["0000001"], # has_entity_component
+            PHB["0000004"], # has_variable_component
+            PHB["0000003"], # has_quality_component
+            PHB["0000032"], # may_have_state
+            PHB["0000005"], # refers_to_phenotype_statement
             BFO["0000051"],
             RO["0000053"],
             RO["0003301"],
@@ -1247,8 +1247,8 @@ def prune_unreferenced_prototypes(g: Graph) -> Dict[str, int]:
     KB_NS = str(KB)
     removed = {"qualities": 0, "organisms": 0, "total": 0}
 
-    referenced_qualities = {o for _, _, o in g.triples((None, PHB.has_quality_component, None)) if isinstance(o, URIRef)}
-    referenced_organisms = {o for _, _, o in g.triples((None, PHB.has_organism_component, None)) if isinstance(o, URIRef)}
+    referenced_qualities = {o for _, _, o in g.triples((None, PHB["0000003"], None)) if isinstance(o, URIRef)}
+    referenced_organisms = {o for _, _, o in g.triples((None, PHB["0000002"], None)) if isinstance(o, URIRef)}
 
     candidates = list(set(g.subjects(RDF.type, OWL.NamedIndividual)))
     to_remove: List[Tuple[str, URIRef]] = []
@@ -1470,9 +1470,9 @@ def build_cdao_matrix(
                 g.add((matrix_uri, CDAO["0000208"], tu_uri))
 
                 if org_instance:
-                    g.add((ph_uri, PHB.has_organism_component, org_instance))
+                    g.add((ph_uri, PHB["0000002"], org_instance))
                 for locator in locator_instances:
-                    g.add((ph_uri, PHB.has_entity_component, locator))
+                    g.add((ph_uri, PHB["0000001"], locator))
 
                 var_instance = handle_variable_component(
                     g,
@@ -1480,7 +1480,7 @@ def build_cdao_matrix(
                     org_seed=(str(org_instance) if org_instance is not None else None)
                 )
                 if var_instance:
-                    g.add((ph_uri, PHB.has_variable_component, var_instance))
+                    g.add((ph_uri, PHB["0000004"], var_instance))
 
                 # Unify quality resolution: use the same index as state_symbol, or '?' → unknown quality
                 chosen_quality_node: Optional[URIRef] = None
@@ -1508,7 +1508,7 @@ def build_cdao_matrix(
                         last_locator = locator_instances[-1]
                         g.add((last_locator, RO["0000053"], chosen_quality_node))
                     # Still assert that the phenotype has this quality component
-                    g.add((ph_uri, PHB.has_quality_component, chosen_quality_node))
+                    g.add((ph_uri, PHB["0000003"], chosen_quality_node))
 
                 # Link exactly one state (if resolvable) to the cell phenotype instance
                 if chosen_state_node is not None:
@@ -1516,7 +1516,7 @@ def build_cdao_matrix(
                     g.add((cell_uri, CDAO["0000184"], chosen_state_node))  # Cell has_state
 
                 # Link Cell → Phenotype (to the per-cell instance)
-                g.add((cell_uri, PHB.refers_to_phenotype_statement, ph_uri))
+                g.add((cell_uri, PHB["0000005"], ph_uri))
 
     return g, matrix_uri
 
@@ -1640,7 +1640,7 @@ def process_taxon(
         state_uri_str = char_state_mapping.get(char_id, {}).get(state_index)
         if state_uri_str and g_char:
             char_uri = generate_uri("char", f"char_{char_id}")
-            tu_graph.add((char_uri, PHB.may_have_state, URIRef(state_uri_str)))
+            tu_graph.add((char_uri, PHB["0000032"], URIRef(state_uri_str)))
             print(f"[TU mapping] {taxon_label} -> Char {char_id}, StateIndex {state_index}")
 
     # Merge species triples into the passed sp_g
