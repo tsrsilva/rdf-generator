@@ -2,13 +2,12 @@
 data_dir: "data"
 
 input:
-  json: "examples/minimal.json"
-  nex: "examples/reduced.nex"
-  species: "examples/sp_reduced.json"
+  json: "input_chars/2025_PA_full.json"
+  nex: "nex/2025_PA_matrix.nex"
+  species: "species/2025_PA_taxa_output_report.json"
   shacl: "shapes/shapes.ttl"
 
 output:
-  base_dir: "outputs"
+  base_dir: "outputs/PA_2025"
   validation: "validation_reports"
   combined: "combined_graphs"
-  graphviz: "graphviz_images"

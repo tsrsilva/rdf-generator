@@ -5,13 +5,13 @@ import os
 import json
 import yaml
 import uuid
+import itertools
 from typing import Optional, Tuple, Dict, Any, List
 
 import dendropy
-from rdflib import Graph, Namespace, URIRef, Literal, BNode
+from rdflib import Graph, Namespace, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, OWL
 from pyshacl import validate
-import itertools
 
 # Global sequential counter for instance labels
 PHENOTYPE_COUNTER = itertools.count(1)
@@ -21,7 +21,6 @@ VARIABLE_COUNTER = itertools.count(1)
 QUALITY_COUNTER = itertools.count(1)
 STATE_COUNTER = itertools.count(1)
 MATRIX_COUNTER = itertools.count(1)
-CHARACTER_COUNTER = itertools.count(1)
 CELL_COUNTER = itertools.count(1)
 
 # === CONFIGURATION ===
@@ -40,7 +39,6 @@ BASE_DIR = os.getcwd()
 DATA_DIR = os.path.join(BASE_DIR, config["data_dir"])
 
 # OUTPUT_DIR from config
-# OUTPUT_DIR = config["output"]["base_dir"]
 output_base = config["output"]["base_dir"]
 if os.path.isabs(output_base):
     OUTPUT_DIR = output_base  # absolute paths stay as-is
@@ -75,7 +73,7 @@ IAO = Namespace("http://purl.obolibrary.org/obo/IAO_")
 KB = Namespace("http://www.phenobees.org/kb#")
 OBO = Namespace("http://purl.obolibrary.org/obo#")
 PATO = Namespace("http://purl.obolibrary.org/obo/PATO_")
-PHB = Namespace("http://www.phenobees.org/ontology#")
+PHB = Namespace("https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/PHB_")
 RO = Namespace("http://purl.obolibrary.org/obo/RO_")
 TXR = Namespace("http://purl.obolibrary.org/obo/TAXRANK_")
 UBERON = Namespace("http://purl.obolibrary.org/obo/UBERON_")
@@ -134,6 +132,7 @@ def parse_char_num(char_id: Any) -> int:
             return DEFAULT_CHAR_SORT_NUM
 
 # ---------- Graph setup helpers ----------
+
 def bind_namespaces(g: Graph) -> Graph:
     """
     Bind all commonly used ontology namespaces to the given RDFLib graph.
@@ -200,10 +199,6 @@ def build_base_graph() -> Graph:
     base.add((CDAO["0000075"], RDFS.label, Literal("standard character")))
     base.add((CDAO["0000138"], RDFS.label, Literal("TU")))
 
-    base.add((PATO["0000001"], RDF.type, OWL.Class))  # PATO Quality
-
-    base.add((PATO["0000001"], RDFS.label, Literal("quality")))
-
     base.add((PHB.NeomorphicStatement, RDF.type, OWL.Class))
     base.add((PHB.TransformationalSimpleStatement, RDF.type, OWL.Class))
     base.add((PHB.TransformationalComplexStatement, RDF.type, OWL.Class))
@@ -266,7 +261,8 @@ with open(INPUT_JSON, "r", encoding="utf-8") as f:
     raw = json.load(f)
     dataset: List[Dict[str, Any]] = raw if isinstance(raw, list) else [raw]
 
-# --- Normalize locators so each is a dict ---
+# ---------- Normalize locators so each is a dict ----------
+
 for row in dataset:
     locators = row.get("Locators", [])
     normalized_locators = []
@@ -309,13 +305,13 @@ shapes_graph = create_graph_with_namespaces()
 shapes_graph.parse(SHACL_FILE, format="turtle")
 
 # Build a normalized label -> URI lookup to assist negation/complements
-state_label_to_uri: Dict[str, str] = {}
+quality_label_to_uri: Dict[str, str] = {}
 for entry in dataset:
     for s in entry.get("States", []):
         lab = next((v for k, v in s.items() if 'label' in k.lower()), "").strip().lower()
         u = next((v for k, v in s.items() if 'uri' in k.lower() and v), None)
-        if lab and u and lab not in state_label_to_uri:
-            state_label_to_uri[lab] = u
+        if lab and u and lab not in quality_label_to_uri:
+            quality_label_to_uri[lab] = u
 
 # ---------- Species processing helper ----------
 def handle_species(
@@ -346,7 +342,8 @@ def handle_species(
         Assumes each species is unique by its label string.
     """
 
-    # --- Resolve species info ---
+    # ---------- Resolve species info ----------
+
     species_info = {}
     for info in species_data.values():
         if info.get("valid_species_name") == sp_label or info.get("input_species_name") == sp_label:
@@ -362,16 +359,19 @@ def handle_species(
         if "zoobank_identifier" not in species_info and sp_data.get("zoobank_identifier"):
             species_info["zoobank_identifier"] = sp_data["zoobank_identifier"]
 
-    # --- Species concept (class) ---
+    # ---------- Species concept (class) ----------
+
     sp_uri_str = species_info.get("URI") or str(KB[sp_label.replace(" ", "_")])
     sp_uri = URIRef(sp_uri_str)
     sp_g.add((sp_uri, RDF.type, OWL.Class))
-    # Use valid_species_name for the label if available, otherwise fall back to sp_label
-    concept_label = species_info.get("valid_species_name", sp_label)
+
+    # Use valid_species_name when present/non-empty; otherwise fall back to the taxon label
+    concept_label = species_info.get("valid_species_name") or sp_label
     sp_g.add((sp_uri, RDFS.label, Literal(concept_label)))
     sp_g.add((sp_uri, RDF.type, TXR["0000006"]))  # the species is a TXR Species class
 
-    # --- Species instance ---
+    # ---------- Species instance ----------
+
     sp_instance = generate_uri("sp", sp_label.strip().lower())
 
     sp_g.add((sp_instance, RDF.type, sp_uri))  # species individual is an instance of the species class
@@ -408,35 +408,11 @@ def serialize_species_graph(
     sp_g.serialize(destination=file_path, format="turtle")
     print(f"[Species TTL] Wrote {file_path}")
 
-
-# ---------- Character-building helpers ----------
-
-def handle_character_type(
-        g: Graph,
-        character: URIRef,
-        data: Dict[str, Any]
-    ) -> None:
-    """
-    Add RDF triples for the character type based on the presence of 'Variable'.
-    Defensive against missing or None variable sections.
-    """
-    variable_data = data.get("Variable")
-    assign_statement_type(g, character, variable_data)
-    g.add((character, RDF.type, OWL.NamedIndividual))
-
-    # Print statement type for debugging
-    if not variable_data:
-        print(f"[Neomorphic] Char_ID: {data['Char_ID']}")
-    
-    elif variable_data.get("Variable comment"):
-        print(f"[Transformational Complex] Char_ID: {data['Char_ID']}")
-    else:
-        print(f"[Transformational Simple] Char_ID: {data['Char_ID']}")
+# ---------- Handlers ----------
 
 def handle_organism(
         g: Graph,
         org_data: Any,
-        #char_id: Optional[str] = None,
         taxon_label: Optional[str] = None
     ) -> Optional[URIRef]:
     """
@@ -473,17 +449,12 @@ def handle_organism(
         prefix = org_label.strip() if org_label else "organism"
         add_individual_triples(g, org_instance, f"{prefix}:id-{seq_num}")
 
-    # Preserve the human-friendly label as rdfs:comment if absent
-    # if not any(g.objects(org_instance, RDFS.comment)):
-        # g.add((org_instance, RDFS.comment, Literal(org_label)))
-
     return org_instance
 
 def handle_locator(
     g: Graph,
     locator: Any,              
     parent_instance: URIRef,
-    # char_id: Optional[str] = None,
     org_seed: Optional[str] = None
 ) -> Optional[URIRef]:
     """
@@ -493,18 +464,23 @@ def handle_locator(
     creates both a class (if URI provided) and an instance,
     and chains the instance to its parent using BFO:0000051 (has_part).
 
+    For absent locators (indicated by state "absent"),
+    instead of creating the locator instance, adds a complement class
+    to the parent_instance indicating it does not have that part.
+
     Args:
         g: RDFLib graph to populate.
         locator: Locator record (dict, str, or URIRef).
         parent_instance: The instance this locator belongs to.
 
     Returns:
-        URIRef of the created locator instance, or None if malformed.
+        URIRef of the created locator instance, or parent_instance if absent, or None if malformed.
 
     NOTE:
         If `locator` is just a string, a new PHB class is created.
-        If it's a dict, expected keys are {"label": str, "uri": str}.
+        If it's a dict, expected keys are {"label": str, "uri": str, "States": list}.
     """
+
     # Normalize locator
     if isinstance(locator, dict):
         loc_dict = locator
@@ -519,6 +495,7 @@ def handle_locator(
         return None  # malformed entry
 
     uri = next((v for k, v in loc_dict.items() if "uri" in k.lower() and v), None)
+
     # Salt UUID with Organism seed and Char_ID to ensure per-organism uniqueness
     seed_base = uri or label.strip().lower()
     if org_seed:
@@ -539,12 +516,9 @@ def handle_locator(
         # Use the original locator label as prefix for the id (e.g., "labrum:id-5")
         prefix_loc = label.strip() if label else "locator"
         add_individual_triples(g, current_instance, f"{prefix_loc}:id-{seq_num}")
-        
-    # Keep the original locator label as a comment if absent
-    # if not any(g.objects(current_instance, RDFS.comment)):
-        # g.add((current_instance, RDFS.comment, Literal(label)))
 
-    # --- Chain anatomy ---
+    # ---------- Chain anatomy ----------
+    
     g.add((parent_instance, BFO["0000051"], current_instance))  # previous → has_part → current
 
     return current_instance
@@ -583,7 +557,6 @@ def handle_organism_and_locators(
     organism_instance = handle_organism(
         g,
         organism_data,
-        # char_id=data.get("Char_ID"),
         taxon_label=taxon_label
     )
     previous_instance = organism_instance
@@ -606,7 +579,7 @@ def handle_organism_and_locators(
                 previous_instance,
                 org_seed=org_seed
             )
-            if current_instance:
+            if current_instance and current_instance != previous_instance:
                 locators.append(current_instance)
                 previous_instance = current_instance  # chain continues
         else:
@@ -635,7 +608,6 @@ def compute_default_organism_instance_uri_from_dataset(
 def handle_variable_component(
     g: Graph,
     data: Dict[str, Any],
-    # char_id: Optional[str] = None,
     org_seed: Optional[str] = None
 ) -> Optional[URIRef]:
     """
@@ -702,10 +674,6 @@ def handle_variable_component(
         # Use the original variable label as prefix for the id (e.g., "shape:id-1")
         prefix_var = var_label.strip() if var_label else "variable"
         add_individual_triples(g, var_instance_uri, f"{prefix_var}:id-{seq_num}")
-        
-    # Preserve the original variable label for readability as comment
-    # if not any(g.objects(var_instance_uri, RDFS.comment)):
-        # g.add((var_instance_uri, RDFS.comment, Literal(var_label)))
 
     if var_data.get("Variable URI"):
         var_uri = URIRef(var_data["Variable URI"])
@@ -720,12 +688,18 @@ def handle_variable_component(
 
 def handle_quality(
     g: Graph,
-    data: Dict[str, Any]
+    data: Dict[str, Any],
+    var_uri: Optional[URIRef] = None
 ) -> Dict[int, str]:
     """
     Add RDF triples for 'Qualities'. Returns a map of index -> quality node URI (str).
-    Negations like "not X" are normalized into positive
-    absence-style labels (e.g., "X absent"), avoiding owl:complementOf.
+        Handles two cases:
+      1. Normal qualities with URIs
+      2. Negations ("not X"): uses has_characteristic property
+
+        Note:
+            "absent" is modeled as a regular quality/state and does not generate
+            complement/restriction logic.
     """
     quality_map_for_char: Dict[int, str] = {}
 
@@ -735,15 +709,23 @@ def handle_quality(
 
         norm_label = label.lower()
 
-        # Detect negations
-        if norm_label.startswith("not "):
+        # Detect case type: negation ("not X")
+        is_negation = norm_label.startswith("not ")
+        resolved_uri = uri  # will be used for complement restriction
+        base_label = None
+
+        if is_negation:
+            # "not X" pattern: extract base as "X"
             base_label = label[4:].strip()
             label = f"not {base_label}"
 
+            # If this negation entry lacks a URI, look up the positive counterpart's URI
+            if not uri:
+                base_label_normalized = base_label.strip().lower()
+                resolved_uri = quality_label_to_uri.get(base_label_normalized)
+
         # UUID for quality
         quality_node = generate_uri("qua", f"{data['Char_ID']}_{uri or label.lower()}")
-
-        g.add((quality_node, RDF.type, PATO["0000001"]))  # PATO Quality
 
         # Type assignment
         if uri:
@@ -753,10 +735,49 @@ def handle_quality(
         # Add a single sequential label only if none exists
         if not any(g.objects(quality_node, RDFS.label)):
             seq_num = next(QUALITY_COUNTER)
-            add_individual_triples(g, quality_node, f"quality:id-{seq_num}")
-        # Keep human-friendly label as comment if absent
-        # if not any(g.objects(quality_node, RDFS.comment)):
-            # g.add((quality_node, RDFS.comment, Literal(label)))
+            prefix_qua = label.strip() if label else "quality"
+            add_individual_triples(g, quality_node, f"{prefix_qua}:id-{seq_num}")
+
+        # Handle restriction and complement modeling for explicit negations only
+        if is_negation and resolved_uri:
+            # Create deterministic/skolemized nodes for the inner restriction and complement class
+            # Use the resolved URI as the seed so the generated URIs are stable across runs/files
+            seed = str(resolved_uri)
+            inner_restriction = generate_uri("restr", seed)
+            
+            # Prefer to show the positive target label (base label or rdfs:label of the resolved URI)
+            if base_label:
+                display_target = base_label
+            else:
+                lbl = next((str(o) for o in g.objects(URIRef(resolved_uri), RDFS.label)), None)
+                display_target = lbl if lbl else str(resolved_uri)
+
+            # Negation case: use has_characteristic property (quality attribution)
+            property_uri = RO["0000053"]  # has_characteristic
+            restr_label = f"has_characteristic some {display_target}"
+            comp_label = f"NOT (has_characteristic some {display_target})"
+
+            # Create and label the inner restriction
+            g.add((inner_restriction, RDFS.label, Literal(restr_label)))
+            g.add((inner_restriction, RDF.type, OWL.Restriction))
+            g.add((inner_restriction, OWL.onProperty, property_uri))
+            g.add((inner_restriction, OWL.someValuesFrom, URIRef(resolved_uri)))
+
+            # Create the complement class with appropriate label
+            complement_class = generate_uri("comp", seed)
+            g.add((complement_class, RDF.type, OWL.Class))
+            g.add((complement_class, OWL.complementOf, inner_restriction))
+            g.add((complement_class, RDFS.label, Literal(comp_label)))
+
+            # Assert the quality instance as an instance of the complement class
+            g.add((quality_node, RDF.type, complement_class))
+            
+            var_data = data.get("Variable") or {}
+            var_class_str = var_data.get("Variable URI")
+            if var_class_str:
+                var_class_uri = URIRef(var_class_str)
+                g.add((var_class_uri, RDF.type, OWL.Class))
+                g.add((quality_node, RDF.type, var_class_uri))
 
         # Link quality to character
         quality_map_for_char[quality_index] = str(quality_node)
@@ -769,12 +790,11 @@ def handle_states(
 ) -> Dict[int, str]:
     """
     Add RDF triples for 'States'. Returns a map of index -> state node URI (str).
-    Negations like "not X" or "absent" are modeled as instances of an anonymous class that is
-    the complement of a restriction: NOT (has_part some X).
+    Creates CDAO State instances for each state in the character.
     
-    For negated states without their own URI:
-        - "not X": look up URI or "X" in state_label_uri
-        - "absent": look up URI of "present" in the same character
+    Note: Negations ("not X") are handled in handle_quality,
+    which creates appropriate restrictions and complement classes.
+    "absent" remains a regular quality/state.
     """
     state_map_for_char: Dict[int, str] = {}
 
@@ -783,105 +803,25 @@ def handle_states(
         uri = next((v for k, v in state.items() if 'uri' in k.lower() and v), None)
 
         normalized_label = label.lower()
-        # Detect negations: "not X" or "absent"
-        is_negation = normalized_label.startswith("not ") or normalized_label == "absent"
-        resolved_uri = uri  # will be used for complement restriction if negation
-        base_label = None
 
-        if is_negation:
-            if normalized_label.startswith("not "):
-                # "not X" pattern: extract base as "X"
-                base_label = label[4:].strip()
-                label = f"not {base_label}"
-
-                # If this negation entry lacks a URI, look up the positive counterpart's URI
-                if not uri:
-                    base_label_normalized = base_label.strip().lower()
-                    resolved_uri = state_label_to_uri.get(base_label_normalized)
-
-            elif normalized_label == "absent":
-                # "absent" pattern: use the last locator in the locator chain as the
-                # target of the presence restriction (has_part some <locator>). If the
-                # last locator supplies a URI, use it; otherwise create a skolemized
-                # class for the locator label and use that.
-                base_label = None
-                resolved_uri = None
-                locs = data.get("Locators") or []
-                if isinstance(locs, list) and len(locs) > 0:
-                    last = locs[-1]
-                    last_label = next((v for k, v in last.items() if 'label' in k.lower()), None)
-                    last_uri = next((v for k, v in last.items() if 'uri' in k.lower() and v), None)
-                    if last_uri:
-                        resolved_uri = last_uri
-                        base_label = last_label if last_label else str(last_uri)
-                    elif last_label:
-                        # Create a skolemized class for the locator label so it can
-                        # be used as the someValuesFrom target (must be a Class IRI).
-                        seed = f"{data.get('Char_ID','') }::locator::{last_label.strip().lower()}"
-                        loc_class = generate_uri("locclass", seed)
-                        g.add((loc_class, RDF.type, OWL.Class))
-                        g.add((loc_class, RDFS.label, Literal(last_label)))
-                        resolved_uri = str(loc_class)
-                        base_label = last_label
-                # Fallback: if no locator-derived target was found, fall back to
-                # the original strategy of using the "present" state's URI (if any)
-                if not resolved_uri:
-                    base_label = "present"
-                    if not uri:
-                        for other_state in data.get("States", []) or []:
-                            other_label = next((v for k, v in other_state.items() if 'label' in k.lower()), "").strip().lower()
-                            if other_label == "present":
-                                other_uri = next((v for k, v in other_state.items() if 'uri' in k.lower() and v), None)
-                                if other_uri:
-                                    resolved_uri = other_uri
-                                    break
-                    if not resolved_uri:
-                        resolved_uri = state_label_to_uri.get("present")
+        # Detect negations
+        if normalized_label.startswith("not "):
+            base_label = label[4:].strip()
+            label = f"not {base_label}"
         
         # UUID for state
         state_node = generate_uri("sta", f"{data['Char_ID']}_{uri or label.lower()}")
 
         g.add((state_node, RDF.type, CDAO["0000045"]))  # CDAO State
 
-        # Add human-readable label (sequential id label + original label as comment) only if absent
+        # Add human-readable label (sequential id label + original label as comment)
         if not any(g.objects(state_node, RDFS.label)):
             seq_num = next(STATE_COUNTER)
             prefix_sta = label.strip() if label else "state"
             add_individual_triples(g, state_node, f"{prefix_sta}:id-{seq_num}")
-        # if not any(g.objects(state_node, RDFS.comment)):
-            # g.add((state_node, RDFS.comment, Literal(label)))
-
-        # If this is a negation with a resolved URI, model as:
-        # state_node rdf:type [owl:complementOf [owl:Restriction ; owl:onProperty BFO:0000051 ; owl:someValuesFrom <uri>]]
-        if is_negation and resolved_uri:
-            # Create deterministic/skolemized nodes for the inner restriction and complement class
-            # Use the resolved URI as the seed so the generated URIs are stable across runs/files
-            seed = str(resolved_uri)
-            inner_restriction = generate_uri("restr", seed)
-            # Prefer to show the positive target label (base label or rdfs:label of the resolved URI)
-            if base_label:
-                display_target = base_label
-            else:
-                lbl = next((str(o) for o in g.objects(URIRef(resolved_uri), RDFS.label)), None)
-                display_target = lbl if lbl else str(resolved_uri)
-
-            # Use the positive target in the inner restriction label (explicit form: has_part some X)
-            g.add((inner_restriction, RDFS.label, Literal(f"has_part some {display_target}")))
-            g.add((inner_restriction, RDF.type, OWL.Restriction))
-            g.add((inner_restriction, OWL.onProperty, BFO["0000051"]))  # has_part
-            g.add((inner_restriction, OWL.someValuesFrom, URIRef(resolved_uri)))
-
-            # Create the complement class: NOT (has_part some <uri>) using a stable URI
-            complement_class = generate_uri("comp", seed)
-            g.add((complement_class, OWL.complementOf, inner_restriction))
-            g.add((complement_class, RDFS.label, Literal(f"NOT (has_part some {display_target})")))
-
-            # Assert the state instance as an instance of the complement class
-            g.add((state_node, RDF.type, complement_class))
 
         # Link state to character
         state_map_for_char[state_index] = str(state_node)
-
 
     return state_map_for_char
 
@@ -905,7 +845,6 @@ def process_phenotype(
     Returns:
         A tuple of:
           - char_uri: URIRef for the Character class.
-          - quality_map_for_char: Mapping of quality indices to KB URIs.
           - state_map_for_char: Mapping of state indices to KB URIs.
           - sp_g: Species-specific RDFLib Graph (possibly empty).
     """
@@ -945,7 +884,24 @@ def process_phenotype(
 # ---------- Validation + Serialization ----------
 
 def perform_shacl_validation(g: Graph, shapes: Graph) -> Tuple[bool, Graph, str]:
-    return validate(data_graph=g, shacl_graph=shapes, inference='rdfs')
+    conforms, results_graph, results_text = validate(data_graph=g, shacl_graph=shapes, inference='rdfs')
+    
+    # Ensure results_graph is a Graph object (not bytes)
+    if isinstance(results_graph, bytes):
+        results_graph_obj = Graph()
+        results_graph_obj.parse(data=results_graph, format='turtle')
+        results_graph = results_graph_obj
+    elif not isinstance(results_graph, Graph):
+        # Fallback: create empty graph if type is unexpected
+        results_graph = Graph()
+    
+    # Ensure results_text is a string
+    if isinstance(results_text, bytes):
+        results_text = results_text.decode('utf-8')
+    else:
+        results_text = str(results_text) if results_text else ""
+    
+    return conforms, results_graph, results_text
 
 def write_validation_results(
     entity_id: str,
@@ -1039,7 +995,7 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
     KB_NS = str(KB)
 
     # Collect sets
-    class_nodes = set(graph.subjects(RDF.type, OWL.Class)) | set(graph.subjects(RDF.type, RDFS.Class))
+    class_nodes = set(graph.subjects(RDF.type, OWL.Class)) | set(graph.subjects(RDF.type, RDFS.Class)) | set(graph.subjects(RDF.type, OWL.Restriction))
     # Also include *local* URIs that are used as rdf:type objects (even if owl:Class not asserted)
     class_nodes |= {
         o for (_, _, o) in graph.triples((None, RDF.type, None))
@@ -1542,7 +1498,6 @@ def build_cdao_matrix(
                         # Copy label and types from base quality node
                         base_label = next((str(o) for o in g.objects(base_q, RDFS.label)), None)
                         add_individual_triples(g, per_org_quality, base_label or "quality")
-                        g.add((per_org_quality, RDF.type, PATO["0000001"]))
                         for t in g.objects(base_q, RDF.type):
                             if t != OWL.NamedIndividual:
                                 g.add((per_org_quality, RDF.type, t))
@@ -1590,8 +1545,15 @@ def enrich_tu_graph(
         org_instance: Default organism instance URI.
         dir_combined: Output directory for TTL serialization.
     """
-    # Format valid label
-    valid_label = species_info.get("valid_species_name", taxon_label)
+    # Format valid label using a robust fallback chain.
+    # Note: dict.get(key, default) does not replace explicit None values.
+    valid_label = (
+        species_info.get("valid_species_name")
+        or species_info.get("input_species_name")
+        or taxon_label
+        or "Unknown species"
+    )
+    valid_label = str(valid_label).strip()
     parts = valid_label.split(" ", 2)
     binomial = f"{parts[0]} {parts[1]}" if len(parts) >= 2 else valid_label
     author = parts[2] if len(parts) == 3 else ""
