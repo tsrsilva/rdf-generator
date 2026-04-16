@@ -564,6 +564,12 @@ def handle_organism_and_locators(
 
     org_seed = str(organism_instance) if organism_instance is not None else None
 
+    """
+    - DSP:
+    - Added new logic to use previous previous instance as 'org_seed'
+    - New logic guarantees uniqueness of generic locators such as those using terms from BSPO
+    """
+
     for locator in data.get("Locators", []) or []:
         # Ensure locator is a dict
         if isinstance(locator, str) or isinstance(locator, URIRef):
@@ -572,14 +578,24 @@ def handle_organism_and_locators(
             print(f"[WARN] Unexpected locator type {type(locator)} for Char_ID {data.get('Char_ID')}")
             continue
 
-        if previous_instance is not None:
+        if previous_instance == organism_instance and previous_instance is not None:
             current_instance = handle_locator(
                 g,
                 locator,
                 previous_instance,
                 org_seed=org_seed
             )
-            if current_instance and current_instance != previous_instance:
+            if current_instance:
+                locators.append(current_instance)
+                previous_instance = current_instance  # chain continues                    
+        elif not previous_instance == organism_instance and previous_instance is not None:
+            current_instance = handle_locator(
+                g,
+                locator,
+                previous_instance,
+                org_seed=str(previous_instance)
+            )
+            if current_instance:
                 locators.append(current_instance)
                 previous_instance = current_instance  # chain continues
         else:
@@ -616,7 +632,7 @@ def handle_variable_component(
     UUID seeding strategy:
       - Always include the variable label (normalized)
       - If available, include organism seed (per-species uniqueness)
-      - If available, include the last locator of the locator chain (per-locator uniqueness)
+      - If available, include chain of locators or generates a random UUID (per-locator uniqueness)
 
     Note on scoping:
         Variable component in original character syntax scopes the quality
@@ -641,32 +657,34 @@ def handle_variable_component(
     var_uri_str = var_data.get("Variable URI") or str(KB[var_label.replace(" ", "_")])
     var_uri = URIRef(var_uri_str)
 
-    # Determine the last locator seed from the chain, preferring a URI if present
-    last_loc_seed: Optional[str] = None
-    try:
-        locs = data.get("Locators") or []
-        if isinstance(locs, list) and len(locs) > 0:
-            last = locs[-1]
-            if isinstance(last, dict):
-                last_label = next((v for k, v in last.items() if "label" in k.lower()), None)
-                last_uri = next((v for k, v in last.items() if "uri" in k.lower() and v), None)
-                last_loc_seed = (last_uri or (last_label.strip().lower() if last_label else None))
-            elif isinstance(last, (str, URIRef)):
-                last_loc_seed = str(last)
-    except Exception:
-        # If anything goes wrong, just omit the locator from the seed
-        last_loc_seed = None
+    # Use chain of locators as seed, preferring the URIs if present
+    locs = data.get("Locators") or []
+
+    if isinstance(locs, list) and len(locs) > 0:
+
+        # Try getting all URIs
+        chain_uri = [next((v for k, v in loc.items() if "uri" in k.lower()), None) for loc in locs]
+        # Try getting all labels
+        chain_label = [next((v for k, v in loc.items() if "label" in k.lower()), None) for loc in locs]
+
+        if all([x is not None for x in chain_uri]):
+            chain_loc_seed = "::".join(chain_uri)
+        elif all([x is not None for x in chain_label]):
+            chain_loc_seed = "::".join(x for x in chain_label if x)
+        else:
+            # If nothing works, just create a safe random seed
+            chain_loc_seed = uuid.uuid4()
 
     # Compose the UUID seed in a stable order
-    seed_components: List[str] = []
-    if org_seed:
-        seed_components.append(str(org_seed))
-    if last_loc_seed:
-        seed_components.append(str(last_loc_seed))
-    seed_components.append(var_label.strip().lower())
+    if org_seed and chain_loc_seed:
+        var_base_seed = f"{str(org_seed)}::{str(chain_loc_seed)}::{var_label.strip().lower()}"
+    elif chain_loc_seed:
+        var_base_seed = f"{str(chain_loc_seed)}::{var_label.strip().lower()}"
+    else:
+       # If no seeds available, just create a safe random seed
+       chain_loc_seed = uuid.uuid4()
 
-    var_uuid_seed = "::".join(seed_components)
-    var_instance_uri = generate_uri("var", var_uuid_seed)
+    var_instance_uri = generate_uri("var", var_base_seed)
 
     # Add a single sequential label only if none exists
     if not any(g.objects(var_instance_uri, RDFS.label)):
