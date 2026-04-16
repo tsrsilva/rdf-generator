@@ -1,6 +1,6 @@
 # RDF Generator
 
-[![CI/CD Pipeline](https://github.com/tsrsilva/rdf-generator/actions/workflows/ci_cd.yaml/badge.svg)](https://github.com/tsrsilva/rdf-generator/actions)
+[![Remote Pipeline](https://github.com/tsrsilva/rdf-generator/actions/workflows/remote.yaml/badge.svg)](https://github.com/tsrsilva/rdf-generator/actions)
 
 A Python tool that generates **RDF phenotype graphs** from JSON and NEXUS matrices, applying **SHACL validation** and producing **graph visualizations** with Graphviz.
 

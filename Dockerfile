@@ -7,10 +7,11 @@ FROM python:3.10-slim
 # Set working directory
 WORKDIR /app
 
-# Copy only dependency files first (for better caching)
+# Copy package metadata and source first so pip can install the local package.
 COPY pyproject.toml /app/
 COPY README.md /app/
 COPY LICENSES /app/
+COPY rdf_generator /app/rdf_generator
 
 # Copy data folder (examples + shapes)
 COPY data /app/data
@@ -30,7 +31,6 @@ RUN pip install --upgrade pip \
     && pip install .
 
 # Copy the rest of the application
-COPY rdf_generator /app/rdf_generator
 COPY configs /app/configs
 COPY rdf_generator/main.py /app/
 

@@ -3,12 +3,11 @@ data_dir: "data"
 
 input:
   json: "examples/minimal.json"
-  nex: "examples/reduced.nex"
-  species: "examples/sp_reduced.json"
+  nex: "examples/minimal.nex"
+  species: "examples/species.json"
   shacl: "shapes/shapes.ttl"
 
 output:
   base_dir: "outputs"
   validation: "validation_reports"
   combined: "combined_graphs"
-  graphviz: "graphviz_images"

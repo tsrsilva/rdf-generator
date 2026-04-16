@@ -1,8 +1,6 @@
 # SPDX-FileCopyrightText: 2025 Thiago S. R. Silva, Diego S. Porto
 # SPDX-License-Identifier: MIT
 
-version: "3.9"
-
 services:
   rdf-generator:
     build: .
@@ -13,7 +11,7 @@ services:
       # Mount outputs folder so results persist on host
       - ./outputs:/app/outputs
       # Mount configuration file
-      - ./configs/config.yaml:/app/config.yaml
+      - ./configs/config.yaml:/app/configs/config.yaml
     environment:
       - ENV=production
     command: ["python", "rdf_generator/main.py"]
