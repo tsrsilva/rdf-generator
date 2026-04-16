@@ -684,8 +684,7 @@ def handle_variable_component(
        # If no seeds available, just create a safe random seed
        chain_loc_seed = uuid.uuid4()
 
-    var_uuid_seed = "::".join(seed_components)
-    var_instance_uri = generate_uri("var", var_uuid_seed)
+    var_instance_uri = generate_uri("var", var_base_seed)
 
     # Add a single sequential label only if none exists
     if not any(g.objects(var_instance_uri, RDFS.label)):
