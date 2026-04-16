@@ -63,13 +63,12 @@ phb:TransformationalSimplePhenotypeShape
     ] ;
 
     sh:property [
-   	sh:path rdfs:comment ;
+   	sh:path ( phb:0000004 rdfs:comment ) ;
     	sh:maxCount 0 ;
     ] ;
     
     sh:property [
     	sh:path phb:0000003 ;
-    	sh:minCount 1 ;
     	sh:minCount 1 ;
     ] .
 
@@ -97,13 +96,12 @@ phb:TransformationalComplexPhenotypeShape
     ] ;
     
     sh:property [
-    	sh:path rdfs:comment ;
+    	sh:path ( phb:0000004 rdfs:comment ) ;
     	sh:minCount 1 ;
     ] ;
         
     sh:property [
     	sh:path phb:0000003 ;
-    	sh:minCount 1 ;
     	sh:minCount 1 ;
     ] .
 
@@ -224,8 +222,8 @@ phb:CellShape
 
   sh:property [
     sh:path cdao:0000191 ; # belongsTo TU
-    sh:minCount 1 ;
-    sh:maxCont 1 ;
+    sh:minCount 0 ;
+    sh:maxCount 1 ;
   ] ;
 
   sh:property [
@@ -242,7 +240,7 @@ phb:CellShape
 
   sh:property [
     sh:path phb:0000005 ;
-    sh:minCount 1 ;
+    sh:minCount 0 ;
   ] .
 
 ###############

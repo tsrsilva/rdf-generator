@@ -104,10 +104,13 @@ def assign_statement_type(g: Graph, entity: URIRef, variable_data: Optional[Dict
     """Centralized logic for assigning statement types based on variable data"""
     if not variable_data:
         g.add((entity, RDF.type, PHB["0000021"]))
-    elif variable_data.get("Variable comment"):
-        g.add((entity, RDF.type, PHB["0000023"]))
     else:
-        g.add((entity, RDF.type, PHB["0000022"]))
+        # Check if variable has a non-empty comment
+        variable_comment = variable_data.get("Variable comment")
+        if variable_comment and str(variable_comment).strip():
+            g.add((entity, RDF.type, PHB["0000023"]))
+        else:
+            g.add((entity, RDF.type, PHB["0000022"]))
 
 # Robust Char_ID → integer parser for sorting; never raises.
 # Returns a large default when parsing fails, ensuring deterministic ordering.
@@ -1467,6 +1470,10 @@ def build_cdao_matrix(
                 # Assign statement class based on Variable section
                 variable_data = char_data.get("Variable")
                 assign_statement_type(g, ph_uri, variable_data)
+                # Keep statement-level comment aligned with SHACL complex phenotype shape.
+                #statement_comment = extract_variable_comment(variable_data)
+                #if statement_comment:
+                    #g.add((ph_uri, RDFS.comment, Literal(statement_comment)))
 
                 # Attach the organism/locator/variable components (with optional override)
                 org_instance, locator_instances = handle_organism_and_locators(
