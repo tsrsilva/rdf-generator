@@ -34,15 +34,12 @@ input:
   json: "examples/minimal.json"
   nex: "examples/minimal.nex"
   species: "examples/species.json"
-  shacl: "shapes/phenotype_shapes.ttl"
+  shacl: "shapes/shapes.ttl"
 
 output:
   base_dir: "/data/outputs"
-  ttl: "output_ttl"
-  png: "output_png"
   validation: "validation_reports"
   combined: "combined_graphs"
-  graphviz: "graphviz_images"
 ```
 
 ## Usage
