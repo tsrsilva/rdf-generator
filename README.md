@@ -8,12 +8,9 @@ A Python tool that generates **RDF phenotype graphs** from JSON and NEXUS matric
 
 ## Features
 
-- Converts **NEXUS** and **JSON** phenotype data into **RDF** graphs  
+- Converts **NEXUS** and **JSON** species and phenotype data into **RDF** graphs  
 - Validates RDF data using **SHACL**  
-- Generates **Graphviz** visualizations (`.png`, `.svg`)  
 - Organized input/output management  
-- Tested via `pytest`  
-- **Docker** and **CI/CD** pipeline with GitHub Actions
 
 ---
 
@@ -144,7 +141,7 @@ Minimal example data files can be found at the ```data/examples``` folder. The f
 ## License
 
 Licensed under the [MIT License](/LICENSES/MIT.txt)
-© 2025 Thiago S. R. Silva, Diego S. Porto
+© 2026 Thiago S. R. Silva, Diego S. Porto
 
 ## Funding
 
