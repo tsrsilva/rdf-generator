@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 @prefix sh: <http://www.w3.org/ns/shacl#> .
-@prefix phb: <https://raw.githubusercontent.com/tsrsilva/rdf-generator/refs/heads/dev/data/ontologies/PHB_> .
+@prefix phb: <https://raw.githubusercontent.com/tsrsilva/rdf-generator/refs/heads/main/data/ontologies/PHB_> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix cdao: <http://purl.obolibrary.org/obo/CDAO_> .
@@ -208,7 +208,7 @@ phb:StateNodeShape
   ] .
 
 #############
-# Cell Shape
+# Cell Shape # TURN OFF FOR NOW
 #############
 
 # Cells (CDAO:0000008):
@@ -216,32 +216,32 @@ phb:StateNodeShape
 # - may have state (CDAO:0000184)
 # - must refer to phenotype statement (phb:refers_to_phenotype_statement)
 
-phb:CellShape
-  a sh:NodeShape ;
-  sh:targetClass cdao:0000008 ;
+# phb:CellShape
+  # a sh:NodeShape ;
+  # sh:targetClass cdao:0000008 ;
 
-  sh:property [
-    sh:path cdao:0000191 ; # belongsTo TU
-    sh:minCount 0 ;
-    sh:maxCount 1 ;
-  ] ;
+  # sh:property [
+    # sh:path cdao:0000191 ; # belongsTo TU
+    # sh:minCount 0 ;
+    # sh:maxCount 1 ;
+  # ] ;
 
-  sh:property [
-    sh:path cdao:0000205 ; # belongsTo Character
-    sh:minCount 1 ;
-    sh:maxCount 1 ;
-  ] ;
+  # sh:property [
+    # sh:path cdao:0000205 ; # belongsTo Character
+    # sh:minCount 1 ;
+    # sh:maxCount 1 ;
+  # ] ;
 
-  sh:property [
-    sh:path cdao:0000184 ; # has_state
-    sh:minCount 0 ;
-    sh:node phb:StateNodeShape ;
-  ] ;
+  # sh:property [
+    # sh:path cdao:0000184 ; # has_state
+    # sh:minCount 0 ;
+    # sh:node phb:StateNodeShape ;
+  # ] ;
 
-  sh:property [
-    sh:path phb:0000005 ;
-    sh:minCount 0 ;
-  ] .
+  # sh:property [
+    # sh:path phb:0000005 ;
+    # sh:minCount 0 ;
+  # ] .
 
 ###############
 # Matrix Shape
