@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025 Thiago S. R. Silva, Diego S. Porto
+# SPDX-FileCopyrightText: 2026 Thiago S. R. Silva, Diego S. Porto
 # SPDX-License-Identifier: MIT
 
 [project]
@@ -12,7 +12,6 @@ authors = [
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
-keywords = ["rdf", "phenotype", "dendropy", "rdflib", "shacl", "graphviz"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -44,9 +43,35 @@ rdf-generator = "rdf_generator.main:main"
 
 # Semantic Release configuration
 [tool.semantic_release]
-version_variable = "rdf_generator/__init__.py:__version__"
-upload_to_pypi = true
+allow_zero_version = true
+major_on_zero = false
+tag_format = "v{version}"
+commit_parser = "conventional"
+commit_message = "chore(release): {version}"
+logging_use_named_masks = true
+version_toml = ["pyproject.toml:project.version"]
+version_variables = ["rdf_generator/__init__.py:__version__"]
+
+[tool.semantic_release.changelog]
+mode = "update"
+exclude_commit_patterns = [
+  '''chore(?:\([^)]*\))?: .+''',
+  '''ci(?:\([^)]*\))?: .+''',
+  '''style(?:\([^)]*\))?: .+''',
+  '''refactor(?:\([^)]*\))?: .+''',
+  '''test(?:\([^)]*\))?: .+''',
+  '''build(?:\([^)]*\))?: .+''',
+  '''Initial [Cc]ommit.*''',
+]
+
+[tool.semantic_release.changelog.default_templates]
 changelog_file = "CHANGELOG.md"
+output_format = "md"
+
+[tool.semantic_release.remote]
+name = "origin"
+type = "github"
+token = { env = "GH_TOKEN" }
 
 [tool.setuptools.packages.find]
 include = ["rdf_generator*"]
