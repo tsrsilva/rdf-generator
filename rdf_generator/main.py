@@ -136,6 +136,13 @@ def parse_char_num(char_id: Any) -> int:
 
 # ---------- Graph setup helpers ----------
 
+def _new_graph() -> Graph:
+    """Create graph without rdflib auto-bound namespaces (when supported)."""
+    try:
+        return Graph(bind_namespaces="none")
+    except TypeError:
+        return Graph()
+
 def bind_namespaces(g: Graph) -> Graph:
     """
     Bind all commonly used ontology namespaces to the given RDFLib graph.
@@ -171,6 +178,12 @@ def bind_namespaces(g: Graph) -> Graph:
 
     return g
 
+def create_graph_with_namespaces() -> Graph:
+    """Create and bind namespaces to a new graph"""
+    g = _new_graph()
+    bind_namespaces(g)
+    return g
+
 def build_base_graph() -> Graph:
     """
     Create a base RDF graph with ontology class scaffolding.
@@ -183,7 +196,7 @@ def build_base_graph() -> Graph:
     Returns:
         A new RDFLib Graph pre-populated with base ontology classes.
     """
-    base = Graph()
+    base = _new_graph()
     bind_namespaces(base)
 
     # Minimal class declarations used across character graphs
@@ -909,12 +922,11 @@ def perform_shacl_validation(g: Graph, shapes: Graph) -> Tuple[bool, Graph, str]
     
     # Ensure results_graph is a Graph object (not bytes)
     if isinstance(results_graph, bytes):
-        results_graph_obj = Graph()
+        results_graph_obj = create_graph_with_namespaces()
         results_graph_obj.parse(data=results_graph, format='turtle')
         results_graph = results_graph_obj
     elif not isinstance(results_graph, Graph):
-        # Fallback: create empty graph if type is unexpected
-        results_graph = Graph()
+        results_graph = create_graph_with_namespaces()
     
     # Ensure results_text is a string
     if isinstance(results_text, bytes):
@@ -991,8 +1003,29 @@ def apply_matrix_label_priority(matrix_graph: Graph, target_graph: Graph) -> int
 def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
     """Write TTL grouped into Classes, Individuals (grouped), Properties, and Other."""
     # Serialize once to get the prefix block
-    ttl_full = graph.serialize(format="turtle", encoding="utf-8").decode("utf-8")
-    prefix_block = ttl_full.split("\n\n", 1)[0]
+    #ttl_full = graph.serialize(format="turtle", encoding="utf-8").decode("utf-8")
+    #prefix_block = ttl_full.split("\n\n", 1)[0]
+
+    bind_namespaces(graph)
+
+    preferred_order = [
+        "bfo", "cdao", "dc", "dwc", "iao", "kb", "obo", "owl",
+        "pato", "phb", "rdf", "rdfs", "ro", "txr", "uberon", "xsd"
+    ]
+
+    allowed_prefixes = set(preferred_order)
+
+    # Build prefix block from namespace bindings
+    ns_map: Dict[str, str] = {}
+    for pref, ns in graph.namespace_manager.namespaces():
+        if pref and pref in allowed_prefixes:
+            ns_map[pref] = str(ns)
+    ns_map["rdf"] = str(RDF) 
+
+    ordered_prefixes = [p for p in preferred_order if p in ns_map] + sorted(
+        [p for p in ns_map.keys() if p not in preferred_order]
+    )
+    prefix_block = "\n".join([f"@prefix {p}: <{ns_map[p]}> ." for p in ordered_prefixes])
 
     def _render_node(u):
             """
@@ -1001,10 +1034,16 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
             """
             try:
                 if isinstance(u, URIRef):
-                    return graph.namespace_manager.normalizeUri(u)
+                    # Use prefixed form only for allowed prefixes; otherwise full IRI
+                    qname = graph.namespace_manager.qname(u)
+                    if ":" in qname:
+                        pref = qname.split(":", 1)[0]
+                        if pref in allowed_prefixes:
+                            return qname
+                    return f"<{u}>"
                 return u.n3()
             except Exception:
-                return f"<{u}>" if isinstance(u, URIRef) else u.n3()  
+                return f"<{u}>" if isinstance(u, URIRef) else u.n3()
 
     def _write_triple(f, s, p, o):
         s_txt = _render_node(s)
