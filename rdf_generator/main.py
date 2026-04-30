@@ -6,6 +6,7 @@ import json
 import yaml
 import uuid
 import itertools
+import re
 from typing import Optional, Tuple, Dict, Any, List
 
 import dendropy
@@ -84,12 +85,6 @@ XSD = Namespace("http://www.w3.org/2001/XMLSchema#")
 
 # ---------- Common utility functions ----------
 
-def create_graph_with_namespaces() -> Graph:
-    """Create and bind namespaces to a new graph"""
-    g = Graph()
-    bind_namespaces(g)
-    return g
-
 def generate_uri(prefix: str, seed: str) -> URIRef:
     """Centralized URI generation using UUID5"""
     uuid_val = uuid.uuid5(UUID_NAMESPACE, seed)
@@ -133,6 +128,38 @@ def parse_char_num(char_id: Any) -> int:
             return int(digits) if digits else DEFAULT_CHAR_SORT_NUM
         except Exception:
             return DEFAULT_CHAR_SORT_NUM
+
+
+def normalize_taxon_label(label: Optional[str]) -> str:
+    """Normalize taxon names, e.g. Genus_sp. -> Genus_sp."""
+    if label is None:
+        return ""
+    normalized = str(label).strip().replace(" ", "_")
+    return re.sub(r"(_sp)\.$", r"\1", normalized, flags=re.IGNORECASE)
+
+
+def normalize_species_uri(uri: Optional[str], fallback_label: str) -> str:
+    """
+    Normalize species URI sources.
+    - kb:LocalName -> http://www.phenobees.org/kb#LocalName
+    - http://www.phenobees.org/kb#LocalName -> same namespace with normalized LocalName
+    - fallback to KB[fallback_label]
+    """
+    fallback = normalize_taxon_label(fallback_label)
+    if not uri:
+        return str(KB[fallback])
+
+    value = str(uri).strip()
+    if value.startswith("kb:"):
+        local = normalize_taxon_label(value.split("kb:", 1)[1])
+        return str(KB[local])
+
+    kb_ns = str(KB)
+    if value.startswith(kb_ns):
+        local = normalize_taxon_label(value[len(kb_ns):])
+        return str(KB[local])
+
+    return value
 
 # ---------- Graph setup helpers ----------
 
@@ -310,7 +337,18 @@ for row in dataset:
 print("\n=== Loading species names ===")
 with open(SPECIES_FILE, "r", encoding="utf-8") as f:
     species_list = json.load(f)
-    species_data: Dict[str, Dict[str, Any]] = {s["input_species_name"]: s for s in species_list}
+    species_data: Dict[str, Dict[str, Any]] = {}
+    for s in species_list:
+        entry = s.copy()
+        if entry.get("input_species_name"):
+            entry["input_species_name"] = normalize_taxon_label(entry["input_species_name"])
+        if entry.get("valid_species_name"):
+            entry["valid_species_name"] = normalize_taxon_label(entry["valid_species_name"])
+        if entry.get("URI"):
+            entry["URI"] = normalize_species_uri(entry.get("URI"), entry.get("input_species_name") or "")
+        species_key = entry.get("input_species_name") or entry.get("valid_species_name")
+        if species_key:
+            species_data[species_key] = entry
 
 print("\n=== Loading NEXUS Matrix ===")
 nexus_dataset = dendropy.DataSet.get(path=NEX_FILE, schema="nexus")
@@ -360,9 +398,13 @@ def handle_species(
 
     # ---------- Resolve species info ----------
 
+    sp_label = normalize_taxon_label(sp_label)
+
     species_info = {}
     for info in species_data.values():
-        if info.get("valid_species_name") == sp_label or info.get("input_species_name") == sp_label:
+        info_valid = normalize_taxon_label(info.get("valid_species_name")) if info.get("valid_species_name") else ""
+        info_input = normalize_taxon_label(info.get("input_species_name")) if info.get("input_species_name") else ""
+        if info_valid == sp_label or info_input == sp_label:
             species_info = info.copy()  # make a copy to safely modify
             break
     if not species_info:
@@ -377,12 +419,12 @@ def handle_species(
 
     # ---------- Species concept (class) ----------
 
-    sp_uri_str = species_info.get("URI") or str(KB[sp_label.replace(" ", "_")])
+    sp_uri_str = normalize_species_uri(species_info.get("URI"), sp_label)
     sp_uri = URIRef(sp_uri_str)
     sp_g.add((sp_uri, RDF.type, OWL.Class))
 
     # Use valid_species_name when present/non-empty; otherwise fall back to the taxon label
-    concept_label = species_info.get("valid_species_name") or sp_label
+    concept_label = normalize_taxon_label(species_info.get("valid_species_name") or sp_label)
     sp_g.add((sp_uri, RDFS.label, Literal(concept_label)))
     sp_g.add((sp_uri, RDF.type, TXR["0000006"]))  # the species is a TXR Species class
 
@@ -418,7 +460,7 @@ def serialize_species_graph(
     os.makedirs(output_dir, exist_ok=True)
 
     # Create a safe filename from species label
-    safe_label = sp_label.replace(" ", "_").replace("/", "_")
+    safe_label = normalize_taxon_label(sp_label).replace("/", "_")
     file_path = os.path.join(output_dir, f"{safe_label}.ttl")
 
     sp_g.serialize(destination=file_path, format="turtle")
@@ -902,7 +944,7 @@ def process_phenotype(
 
     # Species Graph
     sp_g = create_graph_with_namespaces()
-    sp_label = row.get("SpeciesLabel")
+    sp_label = normalize_taxon_label(row.get("SpeciesLabel"))
     species_id = row.get("SpeciesID")
     if sp_label and species_id:
         sp_uri = generate_uri("sp", sp_label)
@@ -1027,6 +1069,22 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
     )
     prefix_block = "\n".join([f"@prefix {p}: <{ns_map[p]}> ." for p in ordered_prefixes])
 
+    KB_NS = str(KB)
+    kb_generated_prefixes = (
+        "sp-", "phe-", "org-", "loc-", "var-", "qua-", "sta-",
+        "mx-", "char-", "tu-", "cell-", "comp-", "restr-"
+    )
+    force_full_iri_prefixes = {"bfo", "cdao", "iao", "pato", "phb", "ro", "txr","uberon"}
+
+    def _is_kb_generated_uri(u: URIRef) -> bool:
+        if not isinstance(u, URIRef):
+            return False
+        value = str(u)
+        if not value.startswith(KB_NS):
+            return False
+        local = value[len(KB_NS):]
+        return local.startswith(kb_generated_prefixes)
+
     def _render_node(u):
             """
             Render a node using prefixed names when possible; fallback to <IRI>.
@@ -1034,10 +1092,16 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
             """
             try:
                 if isinstance(u, URIRef):
+                    # Keep KB species concept URIs explicit, while
+                    # allowing generated KB instance IDs to stay compact.
+                    if str(u).startswith(KB_NS) and not _is_kb_generated_uri(u):
+                        return f"<{u}>"
                     # Use prefixed form only for allowed prefixes; otherwise full IRI
                     qname = graph.namespace_manager.qname(u)
                     if ":" in qname:
                         pref = qname.split(":", 1)[0]
+                        if pref in force_full_iri_prefixes:
+                            return f"<{u}>"
                         if pref in allowed_prefixes:
                             return qname
                     return f"<{u}>"
@@ -1052,7 +1116,6 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
         f.write(f"{s_txt} {p_txt} {o_txt} .\n")
 
     # Derive local namespace string for "local class used as rdf:type object" fallback
-    KB_NS = str(KB)
 
     # Collect sets
     class_nodes = set(graph.subjects(RDF.type, OWL.Class)) | set(graph.subjects(RDF.type, RDFS.Class)) | set(graph.subjects(RDF.type, OWL.Restriction))
@@ -1500,8 +1563,9 @@ def build_cdao_matrix(
             for ph_uri, override_org in pheno_variants:
                 # Minimal typing/label for the cell-specific phenotype
                 g.add((ph_uri, KB.sortCharNum, Literal(parse_char_num(char_id), datatype=XSD.integer)))
-                g.add((ph_uri, KB.sortSpecies, Literal(taxon.label)))
-                g.add((ph_uri, DC.description, Literal(f"Phenotype statement for {char_data.get('CharacterLabel', char_id)} in {taxon.label}")))
+                normalized_taxon_label = normalize_taxon_label(str(taxon.label))
+                g.add((ph_uri, KB.sortSpecies, Literal(normalized_taxon_label)))
+                g.add((ph_uri, DC.description, Literal(f"Phenotype statement for {char_data.get('CharacterLabel', char_id)} in {normalized_taxon_label}")))
                 # Sequential, human-friendly label for phenotype instances
                 seq_num = next(PHENOTYPE_COUNTER)
                 add_individual_triples(g, ph_uri, f"phenotype:id-{seq_num}")
@@ -1519,11 +1583,11 @@ def build_cdao_matrix(
                     g,
                     char_data,
                     override_org=override_org,
-                    taxon_label=str(taxon.label)
+                    taxon_label=normalized_taxon_label
                 )
 
                 # Mint a TU unique to species and connect organism, cell and matrix to it
-                tu_seed = f"{str(taxon.label).strip().lower()}"
+                tu_seed = f"{normalized_taxon_label.strip().lower()}"
                 tu_uri = generate_uri("tu", tu_seed)
                 g.add((tu_uri, RDF.type, OWL.NamedIndividual))
                 g.add((tu_uri, RDF.type, CDAO["0000138"]))
@@ -1646,7 +1710,7 @@ def process_taxon(
     dir_combined: str,
     # dir_graphviz: str
 ) -> Graph:  # return the TU graph so main can merge it later
-    taxon_label = str(taxon.label)
+    taxon_label = normalize_taxon_label(str(taxon.label))
 
     # Build a species subgraph for THIS taxon and get its instance + info
     sp_graph = create_graph_with_namespaces()
