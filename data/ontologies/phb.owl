@@ -393,11 +393,11 @@
 
 
 
-    <!-- https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000032 -->
+    <!-- https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000033 -->
 
-    <owl:Class rdf:about="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000032">
+    <owl:Class rdf:about="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000033">
         <rdfs:label xml:lang="en">quality</rdfs:label>
-        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PHB:0000032</oboInOwl:id>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PHB:0000033</oboInOwl:id>
         <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000006"/>
         <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/BFO_0000019"/>
         <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">BFO:0000019</oboInOwl:hasDbXref>
