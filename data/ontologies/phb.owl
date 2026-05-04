@@ -390,4 +390,18 @@
         <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PHB:0000031</oboInOwl:id>
         <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000028"/>
     </owl:Class>
+
+
+
+    <!-- https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000032 -->
+
+    <owl:Class rdf:about="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000032">
+        <rdfs:label xml:lang="en">quality</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PHB:0000032</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000006"/>
+        <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/BFO_0000019"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">BFO:0000019</oboInOwl:hasDbXref>
+        <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/PATO_0000001"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PATO:0000001</oboInOwl:hasDbXref>
+    </owl:Class>
 </rdf:RDF>
