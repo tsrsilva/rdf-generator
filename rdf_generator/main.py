@@ -76,6 +76,7 @@ KB = Namespace("http://www.phenobees.org/kb#")
 OBO = Namespace("http://purl.obolibrary.org/obo#")
 PATO = Namespace("http://purl.obolibrary.org/obo/PATO_")
 PHB = Namespace("https://raw.githubusercontent.com/tsrsilva/rdf-generator/refs/heads/main/data/ontologies/PHB_")
+PMCK = Namespace("https://raw.githubusercontent.com/tsrsilva/rdf-generator/refs/heads/main/data/ontologies/PMCK_")
 RO = Namespace("http://purl.obolibrary.org/obo/RO_")
 TXR = Namespace("http://purl.obolibrary.org/obo/TAXRANK_")
 UBERON = Namespace("http://purl.obolibrary.org/obo/UBERON_")
@@ -271,6 +272,7 @@ def bind_namespaces(g: Graph) -> Graph:
         ("owl", OWL),
         ("pato", PATO),
         ("phb", PHB),
+        ("pmck", PMCK),
         ("rdf", RDF),
         ("rdfs", RDFS),
         ("ro", RO),
@@ -1139,7 +1141,7 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
 
     preferred_order = [
         "bfo", "cdao", "dc", "dwc", "iao", "kb", "obo", "owl",
-        "pato", "phb", "rdf", "rdfs", "ro", "txr", "uberon", "xsd"
+        "pato", "phb", "pmck", "rdf", "rdfs", "ro", "txr", "uberon", "xsd"
     ]
 
     allowed_prefixes = set(preferred_order)
@@ -1161,7 +1163,7 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
         "sp-", "phe-", "org-", "loc-", "var-", "qua-", "sta-",
         "mx-", "char-", "tu-", "cell-", "comp-", "restr-"
     )
-    force_full_iri_prefixes = {"bfo", "cdao", "iao", "pato", "phb", "ro", "txr","uberon"}
+    force_full_iri_prefixes = {"bfo", "cdao", "iao", "pato", "phb", "pmck", "ro", "txr","uberon"}
 
     def _is_kb_generated_uri(u: URIRef) -> bool:
         if not isinstance(u, URIRef):
@@ -1230,6 +1232,10 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
 
     with open(ttl_file, "w", encoding="utf-8") as f:
         f.write(prefix_block + "\n\n")
+        f.write(
+            "<http://www.phenobees.org/kb> a owl:Ontology ;\n"
+            "  owl:imports <https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl> .\n\n"
+        )
 
         # === Classes ===
         f.write("### ===================== ### \n### ====== CLASSES ====== ###\n### ===================== ### \n\n")
