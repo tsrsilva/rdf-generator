@@ -404,4 +404,16 @@
         <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/PATO_0000001"/>
         <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PATO:0000001</oboInOwl:hasDbXref>
     </owl:Class>
+
+
+
+        <!-- https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000034 -->
+
+    <owl:Class rdf:about="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000034">
+        <rdfs:label xml:lang="en">count</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PHB:0000034</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000019"/>
+        <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/APOLLO_SV_00000032"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">APOLLO_SV:00000032</oboInOwl:hasDbXref>
+    </owl:Class>
 </rdf:RDF>
