@@ -51,6 +51,7 @@ INPUT_JSON = os.path.join(DATA_DIR, config["input"]["json"])
 NEX_FILE = os.path.join(DATA_DIR, config["input"]["nex"])
 SPECIES_FILE = os.path.join(DATA_DIR, config["input"]["species"])
 SHACL_FILE = os.path.join(DATA_DIR, config["input"]["shacl"])
+PMCK_FILE = os.path.join(DATA_DIR, config["input"].get("pmck", os.path.join("ontologies", "pmck.owl")))
 
 # Output directories
 DIR_VALIDATION = os.path.join(OUTPUT_DIR, config["output"]["validation"])
@@ -75,6 +76,7 @@ KB = Namespace("http://www.phenobees.org/kb#")
 OBO = Namespace("http://purl.obolibrary.org/obo#")
 PATO = Namespace("http://purl.obolibrary.org/obo/PATO_")
 PHB = Namespace("https://raw.githubusercontent.com/tsrsilva/rdf-generator/refs/heads/main/data/ontologies/PHB_")
+PMCK = Namespace("https://raw.githubusercontent.com/tsrsilva/rdf-generator/refs/heads/main/data/ontologies/PMCK_")
 RO = Namespace("http://purl.obolibrary.org/obo/RO_")
 TXR = Namespace("http://purl.obolibrary.org/obo/TAXRANK_")
 UBERON = Namespace("http://purl.obolibrary.org/obo/UBERON_")
@@ -161,6 +163,83 @@ def normalize_species_uri(uri: Optional[str], fallback_label: str) -> str:
 
     return value
 
+
+def normalize_term_label(label: Optional[str]) -> str:
+    """Normalize term labels for robust ontology label matching."""
+    if label is None:
+        return ""
+    normalized = re.sub(r"\s+", " ", str(label).strip().lower())
+    return normalized
+
+
+def load_pmck_label_index(pmck_file: str) -> Dict[str, str]:
+    """Build normalized label -> URI index from pmck.owl."""
+    if not os.path.exists(pmck_file):
+        print(f"[WARN] PMCK ontology file not found: {pmck_file}")
+        return {}
+
+    pmck_graph = Graph()
+    pmck_graph.parse(pmck_file)
+
+    label_to_uri: Dict[str, str] = {}
+    for subject, label in pmck_graph.subject_objects(RDFS.label):
+        key = normalize_term_label(str(label))
+        if key and key not in label_to_uri:
+            label_to_uri[key] = str(subject)
+
+    print(f"[PMCK] Loaded {len(label_to_uri)} label mappings from {pmck_file}")
+    return label_to_uri
+
+
+def apply_pmck_uri_fallbacks(dataset: List[Dict[str, Any]], pmck_index: Dict[str, str]) -> Dict[str, int]:
+    """
+    Replace null/missing URI values in input dataset using PMCK label matches.
+
+    Applies to Organism, Locators, Variable and States blocks.
+    """
+    stats = {"filled": 0, "unresolved": 0}
+
+    def fill_uri_if_missing(term_obj: Any, context: str) -> None:
+        if not isinstance(term_obj, dict):
+            return
+
+        label_key = next((k for k in term_obj.keys() if "label" in k.lower()), None)
+        uri_key = next((k for k in term_obj.keys() if "uri" in k.lower()), None)
+        if not label_key or not uri_key:
+            return
+
+        current_uri = term_obj.get(uri_key)
+        if current_uri is not None and str(current_uri).strip() and str(current_uri).strip().lower() != "null":
+            return
+
+        label = term_obj.get(label_key)
+        norm_label = normalize_term_label(label)
+        if not norm_label:
+            return
+
+        resolved_uri = pmck_index.get(norm_label)
+        if resolved_uri:
+            term_obj[uri_key] = resolved_uri
+            stats["filled"] += 1
+        else:
+            stats["unresolved"] += 1
+            print(f"[PMCK][MISS] {context}: '{label}'")
+
+    for row in dataset:
+        char_id = row.get("Char_ID", "unknown")
+
+        fill_uri_if_missing(row.get("Organism"), f"{char_id} Organism")
+
+        for i, locator in enumerate(row.get("Locators", []) or []):
+            fill_uri_if_missing(locator, f"{char_id} Locator[{i}]")
+
+        fill_uri_if_missing(row.get("Variable"), f"{char_id} Variable")
+
+        for i, state in enumerate(row.get("States", []) or []):
+            fill_uri_if_missing(state, f"{char_id} State[{i}]")
+
+    return stats
+
 # ---------- Graph setup helpers ----------
 
 def _new_graph() -> Graph:
@@ -193,6 +272,7 @@ def bind_namespaces(g: Graph) -> Graph:
         ("owl", OWL),
         ("pato", PATO),
         ("phb", PHB),
+        ("pmck", PMCK),
         ("rdf", RDF),
         ("rdfs", RDFS),
         ("ro", RO),
@@ -333,6 +413,15 @@ for row in dataset:
             elif isinstance(loc, URIRef):
                 normalized_nested.append({"label": str(loc).split("/")[-1], "uri": str(loc)})
         var["Locators"] = normalized_nested
+
+print("\n=== Loading PMCK ontology for missing URI fallback ===")
+pmck_label_index = load_pmck_label_index(PMCK_FILE)
+if pmck_label_index:
+    pmck_stats = apply_pmck_uri_fallbacks(dataset, pmck_label_index)
+    print(
+        "[PMCK] URI fallback summary: "
+        f"filled={pmck_stats['filled']}, unresolved={pmck_stats['unresolved']}"
+    )
 
 print("\n=== Loading species names ===")
 with open(SPECIES_FILE, "r", encoding="utf-8") as f:
@@ -1052,7 +1141,7 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
 
     preferred_order = [
         "bfo", "cdao", "dc", "dwc", "iao", "kb", "obo", "owl",
-        "pato", "phb", "rdf", "rdfs", "ro", "txr", "uberon", "xsd"
+        "pato", "phb", "pmck", "rdf", "rdfs", "ro", "txr", "uberon", "xsd"
     ]
 
     allowed_prefixes = set(preferred_order)
@@ -1074,7 +1163,7 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
         "sp-", "phe-", "org-", "loc-", "var-", "qua-", "sta-",
         "mx-", "char-", "tu-", "cell-", "comp-", "restr-"
     )
-    force_full_iri_prefixes = {"bfo", "cdao", "iao", "pato", "phb", "ro", "txr","uberon"}
+    force_full_iri_prefixes = {"bfo", "cdao", "iao", "pato", "phb", "pmck", "ro", "txr","uberon"}
 
     def _is_kb_generated_uri(u: URIRef) -> bool:
         if not isinstance(u, URIRef):
@@ -1143,6 +1232,10 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
 
     with open(ttl_file, "w", encoding="utf-8") as f:
         f.write(prefix_block + "\n\n")
+        f.write(
+            "<http://www.phenobees.org/kb> a owl:Ontology ;\n"
+            "  owl:imports <https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl> .\n\n"
+        )
 
         # === Classes ===
         f.write("### ===================== ### \n### ====== CLASSES ====== ###\n### ===================== ### \n\n")

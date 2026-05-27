@@ -8,6 +8,6 @@ input:
   shacl: "shapes/shapes.ttl"
 
 output:
-  base_dir: "outputs"
+  base_dir: "outputs/examples"
   validation: "validation_reports"
   combined: "combined_graphs"
