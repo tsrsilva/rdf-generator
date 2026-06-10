@@ -29,7 +29,102 @@
     ///////////////////////////////////////////////////////////////////////////////////////
      -->
 
+
+
+
     <owl:AnnotationProperty rdf:about="http://www.w3.org/2000/01/rdf-schema#label"/>
+
+
+
+    <!-- http://purl.org/dc/elements/1.1/contributor -->
+
+    <owl:AnnotationProperty rdf:about="http://purl.org/dc/elements/1.1/contributor"/>
+    
+
+
+    <!-- http://purl.org/dc/elements/1.1/description -->
+
+    <owl:AnnotationProperty rdf:about="http://purl.org/dc/elements/1.1/description">
+        <oboInOwl:hasDbXref>http://purl.org/dc/elements/1.1/description</oboInOwl:hasDbXref>
+        <rdfs:label>description</rdfs:label>
+    </owl:AnnotationProperty>
+     
+
+
+    <!-- http://purl.org/dc/elements/1.1/title -->
+
+    <owl:AnnotationProperty rdf:about="http://purl.org/dc/elements/1.1/title">
+        <oboInOwl:hasDbXref>http://purl.org/dc/elements/1.1/title</oboInOwl:hasDbXref>
+        <rdfs:label>title</rdfs:label>
+    </owl:AnnotationProperty>
+    
+
+
+    <!-- http://purl.org/dc/terms/contributor -->
+
+    <owl:AnnotationProperty rdf:about="http://purl.org/dc/terms/contributor"/>
+    
+
+
+    <!-- http://purl.org/dc/terms/description -->
+
+    <owl:AnnotationProperty rdf:about="http://purl.org/dc/terms/description"/>
+
+
+
+    <!-- http://purl.org/dc/terms/license -->
+
+    <owl:AnnotationProperty rdf:about="http://purl.org/dc/terms/license">
+        <oboInOwl:hasDbXref>http://purl.org/dc/terms/license</oboInOwl:hasDbXref>
+        <rdfs:label>license</rdfs:label>
+    </owl:AnnotationProperty>
+    
+
+
+    <!-- http://purl.org/dc/terms/title -->
+
+    <owl:AnnotationProperty rdf:about="http://purl.org/dc/terms/title"/>
+    
+
+
+    <!-- http://www.geneontology.org/formats/oboInOwl#hasDbXref -->
+
+    <owl:AnnotationProperty rdf:about="http://www.geneontology.org/formats/oboInOwl#hasDbXref">
+        <obo:IAO_0000115>An annotation property that links an ontology entity or a statement to a prefixed identifier or URI.</obo:IAO_0000115>
+        <rdfs:label>database_cross_reference</rdfs:label>
+        <rdfs:label>has cross-reference</rdfs:label>
+    </owl:AnnotationProperty>
+    
+
+
+    <!-- http://www.geneontology.org/formats/oboInOwl#id -->
+
+    <owl:AnnotationProperty rdf:about="http://www.geneontology.org/formats/oboInOwl#id"/>
+    
+
+
+    <!-- http://purl.obolibrary.org/obo/IAO_0000427 -->
+
+    <owl:AnnotationProperty rdf:about="http://purl.obolibrary.org/obo/IAO_0000427">
+        <rdfs:label>antisymmetric property</rdfs:label>
+    </owl:AnnotationProperty>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/IAO_0000118 -->
+
+    <owl:AnnotationProperty rdf:about="http://purl.obolibrary.org/obo/IAO_0000118">
+        <rdfs:label>alternative label</rdfs:label>
+    </owl:AnnotationProperty>
+
+
+
+   <!-- http://purl.obolibrary.org/obo/IAO_0000115 -->
+
+    <owl:AnnotationProperty rdf:about="http://purl.obolibrary.org/obo/IAO_0000115">
+        <rdfs:label>definition</rdfs:label>
+    </owl:AnnotationProperty>
+
 
 
         <!-- 
@@ -39,8 +134,31 @@
     //
     ///////////////////////////////////////////////////////////////////////////////////////
      -->
-
     
+
+
+    <!-- http://purl.obolibrary.org/obo/BFO_0000051 -->
+
+    <owl:ObjectProperty rdf:about="http://purl.obolibrary.org/obo/BFO_0000051">
+        <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#TransitiveProperty"/>
+        <obo:IAO_0000115 xml:lang="en">a core relation that holds between a whole and its part</obo:IAO_0000115>
+        <obo:IAO_0000118 xml:lang="en">has_part</obo:IAO_0000118>
+        <oboInOwl:hasDbXref>BFO:0000051</oboInOwl:hasDbXref>
+        <rdfs:label>has part</rdfs:label>
+        <rdfs:label xml:lang="en">has part</rdfs:label>
+        <rdfs:label>has_part</rdfs:label>
+    </owl:ObjectProperty>
+    
+
+
+    <!-- http://purl.obolibrary.org/obo/IAO_0000136 -->
+
+    <owl:ObjectProperty rdf:about="http://purl.obolibrary.org/obo/IAO_0000136">
+        <rdfs:label>is about</rdfs:label>
+        <oboInOwl:hasDbXref>IAO:0000136</oboInOwl:hasDbXref>
+        <rdfs:domain rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000019"/>
+    </owl:ObjectProperty>
+
 
 
     <!-- https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000001 -->
@@ -117,6 +235,8 @@
         <rdfs:range rdf:resource="http://purl.obolibrary.org/obo/CDAO_0000045"/>
         <obo:IAO_0000427 rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</obo:IAO_0000427>
     </owl:ObjectProperty>
+
+
 
     <!-- 
     ///////////////////////////////////////////////////////////////////////////////////////
@@ -273,8 +393,8 @@
         <rdfs:label xml:lang="en">information artifact</rdfs:label>
         <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PHB:0000019</oboInOwl:id>
         <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000006"/>
-        <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/BFO_0000031"/>
-        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">BFO:0000031</oboInOwl:hasDbXref>
+        <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/IAO_0000030"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">IAO:0000030</oboInOwl:hasDbXref>
     </owl:Class>
 
 
@@ -413,7 +533,7 @@
 
 
 
-        <!-- https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000034 -->
+    <!-- https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000034 -->
 
     <owl:Class rdf:about="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000034">
         <rdfs:label xml:lang="en">count</rdfs:label>
@@ -421,5 +541,187 @@
         <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000019"/>
         <rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/APOLLO_SV_00000032"/>
         <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">APOLLO_SV:00000032</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/BFO_0000004 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/BFO_0000004">
+        <rdfs:label xml:lang="en">independent continuant</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">BFO:0000004</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000035"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">BFO:0000031</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/BFO_0000019 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/BFO_0000019">
+        <rdfs:label xml:lang="en">quality</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">BFO:0000019</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000035"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">BFO:0000019</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/BFO_0000031 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/BFO_0000031">
+        <rdfs:label xml:lang="en">generically dependent continuant</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">BFO:0000031</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000035"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">BFO:0000031</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000035 -->
+
+    <owl:Class rdf:about="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000035">
+        <rdfs:label xml:lang="en">BFO entity</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PHB:0000035</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/CDAO_0000008 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/CDAO_0000008">
+        <rdfs:label xml:lang="en">standard cell</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">CDAO:0000008</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000036"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">CDAO:0000008</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/CDAO_0000045 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/CDAO_0000045">
+        <rdfs:label xml:lang="en">standard state</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">CDAO:0000045</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000036"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">CDAO:0000045</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/CDAO_0000075 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/CDAO_0000075">
+        <rdfs:label xml:lang="en">standard character</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">CDAO:0000075</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000036"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">CDAO:0000075</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+    <!-- https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000036 -->
+
+    <owl:Class rdf:about="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000036">
+        <rdfs:label xml:lang="en">CDAO entity</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PHB:0000036</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/UBERON_0000061 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/UBERON_0000061">
+        <rdfs:label xml:lang="en">anatomical structure</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">UBERON:0000061</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000037"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">UBERON:0000061</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/UBERON_0000465 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/UBERON_0000465">
+        <rdfs:label xml:lang="en">material anatomical entity</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">UBERON:0000465</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000037"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">UBERON:0000465</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/UBERON_0000466 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/UBERON_0000466">
+        <rdfs:label xml:lang="en">immaterial anatomical entity</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">UBERON:0000466</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000037"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">UBERON:0000466</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/UBERON_0000468 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/UBERON_0000468">
+        <rdfs:label xml:lang="en">multicellular organism</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">UBERON:0000468</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000037"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">UBERON:0000468</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000037 -->
+
+    <owl:Class rdf:about="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000037">
+        <rdfs:label xml:lang="en">UBERON entity</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PHB:0000037</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/APOLLO_SV_00000032 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/APOLLO_SV_00000032">
+        <rdfs:label xml:lang="en">count</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">APOLLO_SV:00000032</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000038"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">APOLLO_SV:00000032</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/PATO_0000001 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/PATO_0000001">
+        <rdfs:label xml:lang="en">quality</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PATO:0000001</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000038"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PATO:0000001</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- http://purl.obolibrary.org/obo/IAO_0000030 -->
+
+    <owl:Class rdf:about="http://purl.obolibrary.org/obo/IAO_0000030">
+        <rdfs:label xml:lang="en">information content entity</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">IAO:0000030</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000038"/>
+        <oboInOwl:hasDbXref rdf:datatype="http://www.w3.org/2001/XMLSchema#string">IAO:0000030</oboInOwl:hasDbXref>
+    </owl:Class>
+
+
+
+    <!-- https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000038 -->
+
+    <owl:Class rdf:about="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl#PHB_0000038">
+        <rdfs:label xml:lang="en">Other entities</rdfs:label>
+        <oboInOwl:id rdf:datatype="http://www.w3.org/2001/XMLSchema#string">PHB:0000038</oboInOwl:id>
+        <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
     </owl:Class>
 </rdf:RDF>
