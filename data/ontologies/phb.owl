@@ -13,7 +13,7 @@
      xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
      xmlns:ubr="http://purl.obolibrary.org/obo/UBERON#"
      xmlns:xsd="http://www.w3.org/2001/XMLSchema#">
-    <owl:Ontology rdf:about="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl"/>
+    <owl:Ontology rdf:about="https://raw.githubusercontent.com/tsrsilva/rdf-generator/main/data/ontologies/phb.owl">
         <dcterms:title xml:lang="en">PhenoBees Ontology</dcterms:title>
         <dcterms:license rdf:resource="https://creativecommons.org/licenses/by/4.0/"/>
         <dcterms:description xml:lang="en">The PhenoBees Ontology (PHB) contains terms used to describe upper-level entities in the context of the PhenoBees project.</dcterms:description>
