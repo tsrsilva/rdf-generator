@@ -7,6 +7,7 @@ import yaml
 import uuid
 import itertools
 import re
+import csv
 from typing import Optional, Tuple, Dict, Any, List
 
 import dendropy
@@ -77,6 +78,7 @@ OBO = Namespace("http://purl.obolibrary.org/obo#")
 PATO = Namespace("http://purl.obolibrary.org/obo/PATO_")
 PHB = Namespace("https://raw.githubusercontent.com/tsrsilva/rdf-generator/refs/heads/main/data/ontologies/PHB_")
 PMCK = Namespace("https://raw.githubusercontent.com/tsrsilva/rdf-generator/refs/heads/main/data/ontologies/PMCK_")
+PROV = Namespace("http://www.w3.org/ns/prov#")
 RO = Namespace("http://purl.obolibrary.org/obo/RO_")
 TXR = Namespace("http://purl.obolibrary.org/obo/TAXRANK_")
 UBERON = Namespace("http://purl.obolibrary.org/obo/UBERON_")
@@ -170,6 +172,60 @@ def normalize_term_label(label: Optional[str]) -> str:
         return ""
     normalized = re.sub(r"\s+", " ", str(label).strip().lower())
     return normalized
+
+
+def derive_metadata_csv_path(input_json_path: str, data_dir: str, cfg: Dict[str, Any]) -> str:
+    """Resolve metadata CSV path from config, with fallback based on JSON filename."""
+    configured = cfg.get("input", {}).get("metadata")
+    if configured:
+        return configured if os.path.isabs(configured) else os.path.join(data_dir, configured)
+
+    json_name = os.path.basename(input_json_path)
+    if json_name.endswith("_full.json"):
+        metadata_name = json_name.replace("_full.json", "_metadata.csv")
+    else:
+        metadata_name = os.path.splitext(json_name)[0] + "_metadata.csv"
+    return os.path.join(data_dir, "metadata", metadata_name)
+
+
+def extract_revision_source(comment: Optional[str]) -> str:
+    """Extract source text by removing leading 'Modified from' from comments."""
+    if comment is None:
+        return ""
+    text = str(comment).strip()
+    text = re.sub(r"^\s*modified\s+from\s+", "", text, flags=re.IGNORECASE)
+    return text.strip()
+
+
+def load_char_metadata_map(metadata_csv_path: str) -> Dict[str, str]:
+    """Load Char_ID -> revision source text from metadata CSV file."""
+    if not os.path.exists(metadata_csv_path):
+        print(f"[WARN] Metadata CSV not found: {metadata_csv_path}")
+        return {}
+
+    metadata_map: Dict[str, str] = {}
+    with open(metadata_csv_path, "r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            char_id = str(row.get("Char_ID", "")).strip()
+            source_text = extract_revision_source(row.get("Comment"))
+            if char_id and source_text:
+                metadata_map[char_id] = source_text
+
+    print(f"[META] Loaded {len(metadata_map)} provenance rows from {metadata_csv_path}")
+    return metadata_map
+
+
+def add_revision_provenance(g: Graph, statement_uri: URIRef, char_id: str, metadata_map: Dict[str, str]) -> None:
+    """Attach prov:wasRevisionOf for statements that have metadata comments."""
+    source_text = metadata_map.get(char_id)
+    if not source_text:
+        return
+
+    source_uri = generate_uri("src", f"revision-source::{char_id}::{source_text.lower()}")
+    g.add((source_uri, RDF.type, PROV.Entity))
+    g.add((source_uri, RDFS.label, Literal(source_text)))
+    g.add((statement_uri, PROV.wasRevisionOf, source_uri))
 
 
 def load_pmck_label_index(pmck_file: str) -> Dict[str, str]:
@@ -273,6 +329,7 @@ def bind_namespaces(g: Graph) -> Graph:
         ("pato", PATO),
         ("phb", PHB),
         ("pmck", PMCK),
+        ("prov", PROV),
         ("rdf", RDF),
         ("rdfs", RDFS),
         ("ro", RO),
@@ -375,6 +432,11 @@ def build_base_graph() -> Graph:
     base.add((RDFS.comment, RDF.type, OWL.AnnotationProperty))
     base.add((RDFS.seeAlso, RDF.type, OWL.AnnotationProperty))
 
+    ## Provenance
+    base.add((PROV.Entity, RDF.type, OWL.Class))
+    base.add((PROV.wasRevisionOf, RDF.type, OWL.ObjectProperty))
+    base.add((PROV.wasRevisionOf, RDFS.label, Literal("was revision of")))
+
     return base
 
 # ---------- Load inputs (data, matrix, shapes) ----------
@@ -442,6 +504,10 @@ with open(SPECIES_FILE, "r", encoding="utf-8") as f:
 print("\n=== Loading NEXUS Matrix ===")
 nexus_dataset = dendropy.DataSet.get(path=NEX_FILE, schema="nexus")
 char_matrix = nexus_dataset.char_matrices[0]  # DendroPy CharacterMatrix
+
+print("\n=== Loading character metadata ===")
+METADATA_CSV = derive_metadata_csv_path(INPUT_JSON, DATA_DIR, config)
+char_metadata_map = load_char_metadata_map(METADATA_CSV)
 
 print("\n=== Loading SHACL Shapes ===")
 shapes_graph = create_graph_with_namespaces()
@@ -992,7 +1058,8 @@ def handle_states(
 
 def process_phenotype(
         g: Graph, 
-        row: Dict[str, Any]
+    row: Dict[str, Any],
+    metadata_map: Optional[Dict[str, str]] = None
 ) -> Tuple[URIRef, Dict[int, str], Graph]:
     """
     Construct a phenotype statement graph for a single dataset row.
@@ -1021,6 +1088,7 @@ def process_phenotype(
     g.add((char_uri, RDF.type, CDAO["0000075"]))  # CDAO Character
     g.add((char_uri, RDFS.label, Literal(f"{char_label}")))
     g.add((char_uri, RDF.type, OWL.NamedIndividual))
+    add_revision_provenance(g, char_uri, char_id, metadata_map or {})
 
     # States: build state nodes and register allowed states per Character
     state_map_for_char = handle_states(g, row)
@@ -1141,7 +1209,7 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
 
     preferred_order = [
         "bfo", "cdao", "dc", "dwc", "iao", "kb", "obo", "owl",
-        "pato", "phb", "pmck", "rdf", "rdfs", "ro", "txr", "uberon", "xsd"
+        "pato", "phb", "pmck", "prov", "rdf", "rdfs", "ro", "txr", "uberon", "xsd"
     ]
 
     allowed_prefixes = set(preferred_order)
@@ -1502,7 +1570,8 @@ def build_character_graphs(
     base_graph: Graph,
     shapes: Optional[Graph] = None,
     combined_report_graph: Optional[Graph] = None,
-    validation_dir: Optional[str] = None
+    validation_dir: Optional[str] = None,
+    metadata_map: Optional[Dict[str, str]] = None
 ) -> Tuple[Graph, Dict[str, Graph], Dict[str, Dict[int, str]], List[str]]:
     combined_char_graph = create_graph_with_namespaces()
     for t in base_graph:
@@ -1521,7 +1590,11 @@ def build_character_graphs(
             g_char.add(t)
 
         # Build phenotype and species graph
-        char_uri, state_map_for_char, sp_g = process_phenotype(g_char, row)
+        char_uri, state_map_for_char, sp_g = process_phenotype(
+            g_char,
+            row,
+            metadata_map=metadata_map
+        )
         char_state_mapping[char_id] = state_map_for_char
 
         # Merge species graph if present
@@ -1552,7 +1625,8 @@ def build_cdao_matrix(
     dataset,
     char_ids_in_order: List[str],
     char_quality_mapping: Dict[str, Dict[int, str]],
-    char_state_mapping: Dict[str, Dict[int, str]]
+    char_state_mapping: Dict[str, Dict[int, str]],
+    metadata_map: Optional[Dict[str, str]] = None
 ) -> Tuple[Graph, URIRef]:
     """
     Build a CDAO matrix graph linking TUs, Characters, Cells, and Phenotypes.
@@ -1592,7 +1666,11 @@ def build_cdao_matrix(
         char_quality_mapping[char_id] = quality_map_for_char
 
         # Process phenotype template (character-level; no state attachment here)
-        char_uri, state_map, sp_g = process_phenotype(g, char_data)
+        char_uri, state_map, sp_g = process_phenotype(
+            g,
+            char_data,
+            metadata_map=metadata_map
+        )
 
         # Merge species triples
         if sp_g:
@@ -1662,6 +1740,7 @@ def build_cdao_matrix(
                 # Sequential, human-friendly label for phenotype instances
                 seq_num = next(PHENOTYPE_COUNTER)
                 add_individual_triples(g, ph_uri, f"phenotype:id-{seq_num}")
+                add_revision_provenance(g, ph_uri, char_id, metadata_map or {})
 
                 # Assign statement class based on Variable section
                 variable_data = char_data.get("Variable")
@@ -1917,7 +1996,8 @@ def main():
         base_graph=base_graph,
         shapes=shapes_graph,
         combined_report_graph=combined_report_graph,
-        validation_dir=DIR_VALIDATION
+        validation_dir=DIR_VALIDATION,
+        metadata_map=char_metadata_map
     )
 
     char_quality_mapping: Dict[str, Dict[int, str]] = {}
@@ -1928,7 +2008,8 @@ def main():
     dataset=dataset,
     char_ids_in_order=char_ids_in_order,
     char_quality_mapping=char_quality_mapping,
-    char_state_mapping=char_state_mapping
+    char_state_mapping=char_state_mapping,
+    metadata_map=char_metadata_map
     )
     
     # Validate Matrix graph against SHACL shapes

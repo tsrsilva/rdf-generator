@@ -6,6 +6,7 @@ input:
   nex: "examples/minimal.nex"
   species: "examples/species.json"
   shacl: "shapes/shapes.ttl"
+  metadata: "examples/minimal_metadata.csv"
 
 output:
   base_dir: "outputs/examples"
