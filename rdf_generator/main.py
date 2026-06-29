@@ -217,7 +217,7 @@ def load_char_metadata_map(metadata_csv_path: str) -> Dict[str, str]:
 
 
 def add_revision_provenance(g: Graph, statement_uri: URIRef, char_id: str, metadata_map: Dict[str, str]) -> None:
-    """Attach prov:wasRevisionOf for statements that have metadata comments."""
+    """Attach prov:hadPrimarySource for statements that have metadata comments."""
     source_text = metadata_map.get(char_id)
     if not source_text:
         return
@@ -225,7 +225,7 @@ def add_revision_provenance(g: Graph, statement_uri: URIRef, char_id: str, metad
     source_uri = generate_uri("src", f"revision-source::{char_id}::{source_text.lower()}")
     g.add((source_uri, RDF.type, PROV.Entity))
     g.add((source_uri, RDFS.label, Literal(source_text)))
-    g.add((statement_uri, PROV.wasRevisionOf, source_uri))
+    g.add((statement_uri, PROV.hadPrimarySource, source_uri))
 
 
 def load_pmck_label_index(pmck_file: str) -> Dict[str, str]:
@@ -305,6 +305,7 @@ def _new_graph() -> Graph:
     except TypeError:
         return Graph()
 
+
 def bind_namespaces(g: Graph) -> Graph:
     """
     Bind all commonly used ontology namespaces to the given RDFLib graph.
@@ -342,11 +343,13 @@ def bind_namespaces(g: Graph) -> Graph:
 
     return g
 
+
 def create_graph_with_namespaces() -> Graph:
     """Create and bind namespaces to a new graph"""
     g = _new_graph()
     bind_namespaces(g)
     return g
+
 
 def build_base_graph() -> Graph:
     """
@@ -434,8 +437,8 @@ def build_base_graph() -> Graph:
 
     ## Provenance
     base.add((PROV.Entity, RDF.type, OWL.Class))
-    base.add((PROV.wasRevisionOf, RDF.type, OWL.ObjectProperty))
-    base.add((PROV.wasRevisionOf, RDFS.label, Literal("was revision of")))
+    base.add((PROV.hadPrimarySource, RDF.type, OWL.ObjectProperty))
+    base.add((PROV.hadPrimarySource, RDFS.label, Literal("had primary source")))
 
     return base
 
@@ -523,6 +526,7 @@ for entry in dataset:
             quality_label_to_uri[lab] = u
 
 # ---------- Species processing helper ----------
+
 def handle_species(
     sp_g: Graph,
     sp_label: str,
@@ -664,6 +668,7 @@ def handle_organism(
 
     return org_instance
 
+
 def handle_locator(
     g: Graph,
     locator: Any,              
@@ -736,17 +741,22 @@ def handle_locator(
 
     return current_instance
 
+
 def is_organism_label(label: Optional[str], target: str) -> bool:
     return bool(label) and label.strip().lower() == target
+
 
 def is_adult_organism(org_data: Dict[str, Any]) -> bool:
     return is_organism_label(org_data.get("Label"), "adult organism")
 
+
 def is_female_organism(org_data: Dict[str, Any]) -> bool:
     return is_organism_label(org_data.get("Label"), "female organism")
 
+
 def is_male_organism(org_data: Dict[str, Any]) -> bool:
     return is_organism_label(org_data.get("Label"), "male organism")
+
 
 def handle_organism_and_locators(
     g: Graph,
@@ -816,6 +826,7 @@ def handle_organism_and_locators(
 
     return organism_instance, locators
 
+
 def compute_default_organism_instance_uri_from_dataset(
         dataset: List[Dict[str, Any]]
     ) -> Optional[URIRef]:
@@ -833,6 +844,7 @@ def compute_default_organism_instance_uri_from_dataset(
             seed = f"{taxon_label}::{org_label.strip().lower()}"
             return generate_uri("org", seed)
     return None
+
 
 def handle_variable_component(
     g: Graph,
@@ -854,7 +866,7 @@ def handle_variable_component(
         what entity?).
     
     Note on modeling: 
-        Variables should be modeled as reified observation nodes:
+        Variables could be modeled as reified observation nodes:
         e.g.
             observation
                 ├── observes_entity ──> lorum
@@ -916,6 +928,7 @@ def handle_variable_component(
         g.add((var_instance_uri, RDFS.comment, Literal(var_data["Variable comment"])))
 
     return var_instance_uri
+
 
 def handle_quality(
     g: Graph,
@@ -1015,6 +1028,7 @@ def handle_quality(
 
     return quality_map_for_char
 
+
 def handle_states(
     g: Graph,
     data: Dict[str, Any]
@@ -1055,6 +1069,7 @@ def handle_states(
         state_map_for_char[state_index] = str(state_node)
 
     return state_map_for_char
+
 
 def process_phenotype(
         g: Graph, 
@@ -1135,6 +1150,7 @@ def perform_shacl_validation(g: Graph, shapes: Graph) -> Tuple[bool, Graph, str]
     
     return conforms, results_graph, results_text
 
+
 def write_validation_results(
     entity_id: str,
     conforms: bool,
@@ -1158,6 +1174,7 @@ def write_validation_results(
     for triple in results_graph:
         combined_report_graph.add(triple)
 
+
 def validate_graph_and_record(
     entity_id: str,
     g: Graph,
@@ -1169,6 +1186,7 @@ def validate_graph_and_record(
     write_validation_results(entity_id, conforms, results_graph, results_text,
                              combined_report_graph, validation_dir)
     return conforms
+
 
 def apply_matrix_label_priority(matrix_graph: Graph, target_graph: Graph) -> int:
     """Apply authoritative rdfs:label values from `matrix_graph` onto `target_graph`.
@@ -1198,6 +1216,7 @@ def apply_matrix_label_priority(matrix_graph: Graph, target_graph: Graph) -> int
                 target_graph.add((subj, RDFS.label, Literal(preferred)))
                 changes += 1
     return changes
+
 
 def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
     """Write TTL grouped into Classes, Individuals (grouped), Properties, and Other."""
@@ -1521,6 +1540,7 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
                 f.write(line + "\n")
             f.write("\n")
 
+
 def prune_unreferenced_prototypes(g: Graph) -> Dict[str, int]:
     """
     Remove unreferenced prototype individuals:
@@ -1619,6 +1639,7 @@ def build_character_graphs(
 
     print(f"[DEBUG] Total triples in combined_char_graph: {len(combined_char_graph)}")
     return combined_char_graph, character_graphs, char_state_mapping, char_ids_in_order
+
 
 def build_cdao_matrix(
     nexus_matrix,
@@ -1740,7 +1761,6 @@ def build_cdao_matrix(
                 # Sequential, human-friendly label for phenotype instances
                 seq_num = next(PHENOTYPE_COUNTER)
                 add_individual_triples(g, ph_uri, f"phenotype:id-{seq_num}")
-                add_revision_provenance(g, ph_uri, char_id, metadata_map or {})
 
                 # Assign statement class based on Variable section
                 variable_data = char_data.get("Variable")
@@ -1867,6 +1887,7 @@ def enrich_tu_graph(
         tu_graph.add((org_instance, RDF.type, OWL.NamedIndividual))
     tu_graph.add((tu_uri, RDF.type, CDAO["0000138"]))  # CDAO Taxon Unit
     tu_graph.add((tu_uri, IAO["0000219"], sp_instance)) # TU denotes species instance
+
 
 def process_taxon(
     taxon,
@@ -2114,8 +2135,6 @@ def main():
         print(f"[OK] SHACL combined validation report → {validation_report_ttl}")
     except Exception as e:
         print(f"[WARN] Failed to write SHACL validation report: {e}")
-
-# Combined visualization disabled: build_combined_visualization removed
 
 
 if __name__ == "__main__":
