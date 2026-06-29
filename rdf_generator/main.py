@@ -1900,8 +1900,7 @@ def process_taxon(
     shapes: Graph,
     combined_report_graph: Graph,
     validation_dir: str,
-    dir_combined: str,
-    # dir_graphviz: str
+    dir_combined: str
 ) -> Graph:  # return the TU graph so main can merge it later
     taxon_label = normalize_taxon_label(str(taxon.label))
 
@@ -2056,8 +2055,7 @@ def main():
             shapes=shapes_graph,
             combined_report_graph=combined_report_graph,
             validation_dir=DIR_VALIDATION,
-            dir_combined=DIR_COMBINED,
-            # dir_graphviz=DIR_GRAPHVIZ
+            dir_combined=DIR_COMBINED
         )
         tu_graphs.append(g_tu)
 
