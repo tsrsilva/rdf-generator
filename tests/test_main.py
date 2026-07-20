@@ -75,3 +75,24 @@ def test_graph_building():
     found_ns = [prefix for prefix, _ in g.namespaces()]
     for ns in expected_namespaces:
         assert ns in found_ns, f"Namespace {ns} missing in base graph"
+
+
+def test_organism_seed_uses_dataset_id_and_metadata_fingerprint():
+    """Check that dataset_id wins and metadata changes the fallback seed."""
+    build_organism_seed = rdf_main.build_organism_seed
+
+    cfg_a = {"dataset_id": "dataset-a", "input": {"json": "examples/minimal.json"}}
+    cfg_blank = {"dataset_id": "", "input": {"json": "examples/minimal.json"}}
+    cfg_b = {"dataset_id": "dataset-b", "input": {"json": "examples/minimal.json"}}
+    metadata_a = {"1": "source alpha", "2": "source beta"}
+    metadata_b = {"1": "source alpha", "2": "source gamma"}
+
+    seed_a = build_organism_seed("female organism", "Taxon_A", cfg=cfg_a, metadata_map=metadata_a)
+    seed_b = build_organism_seed("female organism", "Taxon_A", cfg=cfg_a, metadata_map=metadata_b)
+    seed_c = build_organism_seed("female organism", "Taxon_A", cfg=cfg_b, metadata_map=metadata_a)
+    seed_d = build_organism_seed("female organism", "Taxon_A", cfg=cfg_blank, metadata_map=metadata_a)
+    seed_e = build_organism_seed("female organism", "Taxon_A", cfg=cfg_blank, metadata_map=metadata_b)
+
+    assert seed_a == seed_b
+    assert seed_a != seed_c
+    assert seed_d != seed_e
