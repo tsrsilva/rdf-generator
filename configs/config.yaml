@@ -1,5 +1,9 @@
 # config.yaml
 data_dir: "data"
+dataset_id: "min-0001" # Dataset IDs can be any non-enpty string, as long as it is stable and unique for the dataset.
+                       # Good datatset IDs are short, descriptive, and easy to remember.
+                       # For example: ram-1993, am-1995-v1, project-x-study-2025.
+                       # Avoid relying on punctuation or case differences for meaning, because they will be normalized away.
 
 input:
   json: "examples/minimal.json"

@@ -6,6 +6,7 @@ import json
 import yaml
 import uuid
 import itertools
+import hashlib
 import re
 import csv
 from typing import Optional, Tuple, Dict, Any, List
@@ -174,6 +175,13 @@ def normalize_term_label(label: Optional[str]) -> str:
     return normalized
 
 
+def normalize_seed_component(value: Optional[Any]) -> str:
+    """Normalize a seed component so UUID inputs stay stable across runs."""
+    if value is None:
+        return ""
+    return re.sub(r"\s+", " ", str(value).strip().lower())
+
+
 def derive_metadata_csv_path(input_json_path: str, data_dir: str, cfg: Dict[str, Any]) -> str:
     """Resolve metadata CSV path from config, with fallback based on JSON filename."""
     configured = cfg.get("input", {}).get("metadata")
@@ -214,6 +222,44 @@ def load_char_metadata_map(metadata_csv_path: str) -> Dict[str, str]:
 
     print(f"[META] Loaded {len(metadata_map)} provenance rows from {metadata_csv_path}")
     return metadata_map
+
+
+def build_dataset_seed_salt(
+    cfg: Optional[Dict[str, Any]] = None,
+    metadata_map: Optional[Dict[str, str]] = None
+) -> str:
+    """Build a stable dataset-level salt from config or metadata provenance."""
+    active_cfg: Dict[str, Any] = cfg if cfg is not None else config
+    dataset_id = normalize_seed_component(active_cfg.get("dataset_id"))
+    if dataset_id:
+        return f"dataset::{dataset_id}"
+
+    provenance_map = metadata_map if metadata_map is not None else globals().get("char_metadata_map", {})
+    provenance_values = [normalize_seed_component(v) for v in (provenance_map or {}).values()]
+    provenance_values = [v for v in provenance_values if v]
+    if provenance_values:
+        fingerprint_source = "||".join(sorted(provenance_values))
+        fingerprint = hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()[:16]
+        return f"metadata::{fingerprint}"
+
+    input_json = active_cfg.get("input", {}).get("json")
+    if input_json:
+        return f"input::{normalize_seed_component(os.path.basename(str(input_json)))}"
+
+    return "dataset::default"
+
+
+def build_organism_seed(
+    org_label: Optional[str],
+    taxon_label: Optional[str],
+    cfg: Optional[Dict[str, Any]] = None,
+    metadata_map: Optional[Dict[str, str]] = None
+) -> str:
+    """Build the shared organism UUID seed used for both creation and fallback lookup."""
+    dataset_salt = build_dataset_seed_salt(cfg=cfg, metadata_map=metadata_map)
+    taxon_component = normalize_seed_component(taxon_label) or "unknown-taxon"
+    organism_component = normalize_seed_component(org_label) or "organism"
+    return "::".join([dataset_salt, taxon_component, organism_component])
 
 
 def add_revision_provenance(g: Graph, statement_uri: URIRef, char_id: str, metadata_map: Dict[str, str]) -> None:
@@ -644,13 +690,8 @@ def handle_organism(
     org_uri_str = org_data.get("URI") or str(KB[org_label.replace(" ", "_")])
     org_uri = URIRef(org_uri_str)
 
-    # Derive organism UUID solely from taxon_label (when available) to ensure per-species uniqueness
-    org_label_norm = org_label.strip().lower() if org_label else "organism"
-    taxon_norm = taxon_label.strip().lower() if taxon_label else None
-    if taxon_norm:
-        org_uuid_seed = f"{taxon_norm}::{org_label_norm}"
-    else:
-        org_uuid_seed = org_label_norm
+    # Derive organism UUID from dataset salt + taxon label + organism label.
+    org_uuid_seed = build_organism_seed(org_label, taxon_label)
     org_instance = generate_uri("org", org_uuid_seed)
 
     g.add((org_uri, RDF.type, OWL.Class))
@@ -828,12 +869,15 @@ def handle_organism_and_locators(
 
 
 def compute_default_organism_instance_uri_from_dataset(
-        dataset: List[Dict[str, Any]]
+        dataset: List[Dict[str, Any]],
+        cfg: Optional[Dict[str, Any]] = None,
+        metadata_map: Optional[Dict[str, str]] = None
     ) -> Optional[URIRef]:
     """
     Compute a canonical organism instance URI deterministically from the dataset.
-    Uses the first row that has an Organism section and salts the UUID with that
-    row's taxon_label to match the per-species organism instances created elsewhere.
+    Uses the first row that has an Organism section and salts the UUID with the
+    dataset identifier, metadata provenance fingerprint, taxon_label, and
+    organism label to match the per-species organism instances created elsewhere.
     No triples are added here.
     """
     for row in dataset:
@@ -841,7 +885,7 @@ def compute_default_organism_instance_uri_from_dataset(
         org_label = org.get("Label")
         taxon_label = row.get("SpeciesLabel")
         if org_label and taxon_label:
-            seed = f"{taxon_label}::{org_label.strip().lower()}"
+            seed = build_organism_seed(org_label, taxon_label, cfg=cfg, metadata_map=metadata_map)
             return generate_uri("org", seed)
     return None
 
