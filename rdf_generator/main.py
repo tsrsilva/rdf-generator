@@ -928,21 +928,29 @@ def handle_variable_component(
 
     # Use chain of locators as seed, preferring the URIs if present
     locs = data.get("Locators") or []
+    chain_loc_seed = None
 
     if isinstance(locs, list) and len(locs) > 0:
 
         # Try getting all URIs
-        chain_uri = [next((v for k, v in loc.items() if "uri" in k.lower()), None) for loc in locs]
+        chain_uri = [
+            str(next((v for k, v in loc.items() if "uri" in k.lower()), "")).strip()
+            for loc in locs
+        ]
         # Try getting all labels
-        chain_label = [next((v for k, v in loc.items() if "label" in k.lower()), None) for loc in locs]
+        chain_label = [
+            str(next((v for k, v in loc.items() if "label" in k.lower()), "")).strip()
+            for loc in locs
+        ]
 
-        if all([x is not None for x in chain_uri]):
+        if chain_uri and all(chain_uri):
             chain_loc_seed = "::".join(chain_uri)
-        elif all([x is not None for x in chain_label]):
-            chain_loc_seed = "::".join(x for x in chain_label if x)
+        elif chain_label and all(chain_label):
+            chain_loc_seed = "::".join(chain_label)
         else:
-            # If nothing works, just create a safe random seed
-            chain_loc_seed = uuid.uuid4()
+            # Ambiguous/malformed locator payload: force randomization to avoid
+            # unintentionally collapsing distinct phenotype statements.
+            chain_loc_seed = str(uuid.uuid4())
 
     # Compose the UUID seed in a stable order
     if org_seed and chain_loc_seed:
@@ -950,8 +958,8 @@ def handle_variable_component(
     elif chain_loc_seed:
         var_base_seed = f"{str(chain_loc_seed)}::{var_label.strip().lower()}"
     else:
-       # If no seeds available, just create a safe random seed
-       chain_loc_seed = uuid.uuid4()
+        # No seed context available: force randomization.
+        var_base_seed = f"{str(uuid.uuid4())}::{var_label.strip().lower()}"
 
     var_instance_uri = generate_uri("var", var_base_seed)
 
