@@ -205,20 +205,40 @@ def extract_revision_source(comment: Optional[str]) -> str:
     return text.strip()
 
 
-def load_char_metadata_map(metadata_csv_path: str) -> Dict[str, str]:
-    """Load Char_ID -> revision source text from metadata CSV file."""
+def load_char_metadata_map(metadata_csv_path: str) -> Dict[str, Dict[str, str]]:
+    """Load Char_ID -> provenance record from a metadata CSV file.
+
+    Column mapping:
+      - Char_ID -> dictionary key (char_id)
+      - Original_study_comment -> source_text (leading 'Modified from' removed)
+      - Original_study_ID -> source_id
+      - Modelling_author -> target_author
+      - Modeller_ID -> target_id
+
+    Falls back to the legacy 'Comment' column when 'Original_study_comment'
+    is absent.
+    """
     if not os.path.exists(metadata_csv_path):
         print(f"[WARN] Metadata CSV not found: {metadata_csv_path}")
         return {}
 
-    metadata_map: Dict[str, str] = {}
+    metadata_map: Dict[str, Dict[str, str]] = {}
     with open(metadata_csv_path, "r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
             char_id = str(row.get("Char_ID", "")).strip()
-            source_text = extract_revision_source(row.get("Comment"))
-            if char_id and source_text:
-                metadata_map[char_id] = source_text
+            if not char_id:
+                continue
+            record = {
+                "source_text": extract_revision_source(
+                    row.get("Original_study_comment") or row.get("Comment")
+                ),
+                "source_id": str(row.get("Original_study_ID", "") or "").strip(),
+                "target_author": str(row.get("Modelling_author", "") or "").strip(),
+                "target_id": str(row.get("Modeller_ID", "") or "").strip(),
+            }
+            if any(record.values()):
+                metadata_map[char_id] = record
 
     print(f"[META] Loaded {len(metadata_map)} provenance rows from {metadata_csv_path}")
     return metadata_map
@@ -226,7 +246,7 @@ def load_char_metadata_map(metadata_csv_path: str) -> Dict[str, str]:
 
 def build_dataset_seed_salt(
     cfg: Optional[Dict[str, Any]] = None,
-    metadata_map: Optional[Dict[str, str]] = None
+    metadata_map: Optional[Dict[str, Any]] = None
 ) -> str:
     """Build a stable dataset-level salt from config or metadata provenance."""
     active_cfg: Dict[str, Any] = cfg if cfg is not None else config
@@ -235,8 +255,25 @@ def build_dataset_seed_salt(
         return f"dataset::{dataset_id}"
 
     provenance_map = metadata_map if metadata_map is not None else globals().get("char_metadata_map", {})
-    provenance_values = [normalize_seed_component(v) for v in (provenance_map or {}).values()]
-    provenance_values = [v for v in provenance_values if v]
+    provenance_values: List[str] = []
+    for record in (provenance_map or {}).values():
+        if isinstance(record, dict):
+            source_id = normalize_seed_component(record.get("source_id"))
+            target_id = normalize_seed_component(record.get("target_id"))
+            target_author = normalize_seed_component(record.get("target_author"))
+            if not source_id:
+                continue
+            if target_id:
+                provenance_values.append(f"{source_id}::{target_id}")
+            elif target_author:
+                provenance_values.append(f"{source_id}::{target_author}")
+            else:
+                provenance_values.append(source_id)
+        else:
+            # Backward compatibility: plain-text provenance records
+            value = normalize_seed_component(record)
+            if value:
+                provenance_values.append(value)
     if provenance_values:
         fingerprint_source = "||".join(sorted(provenance_values))
         fingerprint = hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()[:16]
@@ -253,7 +290,7 @@ def build_organism_seed(
     org_label: Optional[str],
     taxon_label: Optional[str],
     cfg: Optional[Dict[str, Any]] = None,
-    metadata_map: Optional[Dict[str, str]] = None
+    metadata_map: Optional[Dict[str, Any]] = None
 ) -> str:
     """Build the shared organism UUID seed used for both creation and fallback lookup."""
     dataset_salt = build_dataset_seed_salt(cfg=cfg, metadata_map=metadata_map)
@@ -262,17 +299,40 @@ def build_organism_seed(
     return "::".join([dataset_salt, taxon_component, organism_component])
 
 
-def add_revision_provenance(g: Graph, statement_uri: URIRef, char_id: str, metadata_map: Dict[str, str]) -> None:
-    """Attach prov:hadPrimarySource for statements that have metadata comments."""
-    source_text = metadata_map.get(char_id)
-    if not source_text:
+def add_revision_provenance(g: Graph, statement_uri: URIRef, char_id: str, metadata_map: Dict[str, Any]) -> None:
+    """Attach prov:hadPrimarySource for statements that have metadata provenance."""
+    record = metadata_map.get(char_id)
+    if not record:
         return
 
-    source_uri = generate_uri("src", f"revision-source::{char_id}::{source_text.lower()}")
-    g.add((source_uri, RDF.type, PROV.Entity))
-    g.add((source_uri, RDFS.label, Literal(source_text)))
-    g.add((statement_uri, PROV.hadPrimarySource, source_uri))
+    if isinstance(record, dict):
+        source_text = str(record.get("source_text", "") or "").strip()
+        source_id = str(record.get("source_id", "") or "").strip()
+        target_id = str(record.get("target_id", "") or "").strip()
+        target_author = str(record.get("target_author", "") or "").strip()
+    else:
+        # Backward compatibility: plain-text records carry only the source text
+        source_text = str(record).strip()
+        source_id = target_id = target_author = ""
 
+    if not (source_text or source_id):
+        return
+
+    # Seed the source entity with stable identifiers (source_id + modeller
+    # identity) when available, matching the dataset fingerprint fallback chain.
+    modeller_identity = (target_id or target_author).lower()
+    if source_id and modeller_identity:
+        seed_tail = f"{source_id.lower()}::{modeller_identity}"
+    elif source_id:
+        seed_tail = source_id.lower()
+    else:
+        seed_tail = source_text.lower()
+
+    source_uri = generate_uri("src", f"revision-source::{char_id}::{seed_tail}")
+    g.add((source_uri, RDF.type, PROV.Entity))
+    g.add((source_uri, RDFS.label, Literal(source_text or source_id)))
+    g.add((statement_uri, PROV.hadPrimarySource, source_uri))
+    g.add((statement_uri, PROV.wasAttributedTo, Literal(modeller_identity)))
 
 def load_pmck_label_index(pmck_file: str) -> Dict[str, str]:
     """Build normalized label -> URI index from pmck.owl."""
@@ -871,7 +931,7 @@ def handle_organism_and_locators(
 def compute_default_organism_instance_uri_from_dataset(
         dataset: List[Dict[str, Any]],
         cfg: Optional[Dict[str, Any]] = None,
-        metadata_map: Optional[Dict[str, str]] = None
+        metadata_map: Optional[Dict[str, Any]] = None
     ) -> Optional[URIRef]:
     """
     Compute a canonical organism instance URI deterministically from the dataset.
@@ -1126,7 +1186,7 @@ def handle_states(
 def process_phenotype(
         g: Graph, 
     row: Dict[str, Any],
-    metadata_map: Optional[Dict[str, str]] = None
+    metadata_map: Optional[Dict[str, Any]] = None
 ) -> Tuple[URIRef, Dict[int, str], Graph]:
     """
     Construct a phenotype statement graph for a single dataset row.
@@ -1643,7 +1703,7 @@ def build_character_graphs(
     shapes: Optional[Graph] = None,
     combined_report_graph: Optional[Graph] = None,
     validation_dir: Optional[str] = None,
-    metadata_map: Optional[Dict[str, str]] = None
+    metadata_map: Optional[Dict[str, Any]] = None
 ) -> Tuple[Graph, Dict[str, Graph], Dict[str, Dict[int, str]], List[str]]:
     combined_char_graph = create_graph_with_namespaces()
     for t in base_graph:
@@ -1699,7 +1759,7 @@ def build_cdao_matrix(
     char_ids_in_order: List[str],
     char_quality_mapping: Dict[str, Dict[int, str]],
     char_state_mapping: Dict[str, Dict[int, str]],
-    metadata_map: Optional[Dict[str, str]] = None
+    metadata_map: Optional[Dict[str, Any]] = None
 ) -> Tuple[Graph, URIRef]:
     """
     Build a CDAO matrix graph linking TUs, Characters, Cells, and Phenotypes.

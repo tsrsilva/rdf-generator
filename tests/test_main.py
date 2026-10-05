@@ -84,8 +84,8 @@ def test_organism_seed_uses_dataset_id_and_metadata_fingerprint():
     cfg_a = {"dataset_id": "dataset-a", "input": {"json": "examples/minimal.json"}}
     cfg_blank = {"dataset_id": "", "input": {"json": "examples/minimal.json"}}
     cfg_b = {"dataset_id": "dataset-b", "input": {"json": "examples/minimal.json"}}
-    metadata_a = {"1": "source alpha", "2": "source beta"}
-    metadata_b = {"1": "source alpha", "2": "source gamma"}
+    metadata_a = {"1": {"source_id": "paper-alpha", "target_id": "orcid-1"}}
+    metadata_b = {"1": {"source_id": "paper-gamma", "target_id": "orcid-1"}}
 
     seed_a = build_organism_seed("female organism", "Taxon_A", cfg=cfg_a, metadata_map=metadata_a)
     seed_b = build_organism_seed("female organism", "Taxon_A", cfg=cfg_a, metadata_map=metadata_b)
@@ -96,3 +96,41 @@ def test_organism_seed_uses_dataset_id_and_metadata_fingerprint():
     assert seed_a == seed_b
     assert seed_a != seed_c
     assert seed_d != seed_e
+
+
+def test_dataset_seed_salt_metadata_fallback_chain():
+    """Check source_id/target_id fallback chain in the dataset salt."""
+    build_salt = rdf_main.build_dataset_seed_salt
+    cfg_blank = {"dataset_id": "", "input": {"json": "examples/minimal.json"}}
+
+    def record(source_id="", target_id="", target_author=""):
+        return {"C1": {"source_text": "x", "source_id": source_id,
+                       "target_id": target_id, "target_author": target_author}}
+
+    salt_full = build_salt(cfg=cfg_blank, metadata_map=record("paper-a", "orcid-1", "author-a"))
+    salt_author = build_salt(cfg=cfg_blank, metadata_map=record("paper-a", "", "author-a"))
+    salt_source_only = build_salt(cfg=cfg_blank, metadata_map=record("paper-a"))
+    salt_no_source = build_salt(cfg=cfg_blank, metadata_map=record("", "orcid-1", "author-a"))
+
+    assert salt_full != salt_author
+    assert salt_author != salt_source_only
+    assert salt_full != salt_source_only
+    # Without source_id the record contributes nothing -> input-json fallback
+    assert salt_no_source.startswith("input::")
+
+
+def test_load_char_metadata_map_columns(tmp_path):
+    """Check CSV column mapping into provenance records."""
+    csv_path = tmp_path / "meta.csv"
+    csv_path.write_text(
+        "Char_ID,Original_study_comment,Original_study_ID,Modelling_author,Modeller_ID\n"
+        'C1,"Modified from character 7 of Some Study.","Some Study.","Author, A.","https://orcid.org/0000"\n',
+        encoding="utf-8",
+    )
+
+    result = rdf_main.load_char_metadata_map(str(csv_path))
+
+    assert result["C1"]["source_text"] == "character 7 of Some Study."
+    assert result["C1"]["source_id"] == "Some Study."
+    assert result["C1"]["target_author"] == "Author, A."
+    assert result["C1"]["target_id"] == "https://orcid.org/0000"
