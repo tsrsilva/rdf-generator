@@ -91,8 +91,15 @@ XSD = Namespace("http://www.w3.org/2001/XMLSchema#")
 # ---------- Common utility functions ----------
 
 def generate_uri(prefix: str, seed: str) -> URIRef:
-    """Centralized URI generation using UUID5"""
-    uuid_val = uuid.uuid5(UUID_NAMESPACE, seed)
+    """Centralized URI generation using UUID5.
+
+    Every seed is automatically prefixed with the dataset-level salt
+    (config ``dataset_id``, or the metadata provenance fingerprint when no
+    ``dataset_id`` is set), so instance URIs are unique per dataset while
+    remaining deterministic across runs of the same dataset.
+    """
+    dataset_salt = build_dataset_seed_salt()
+    uuid_val = uuid.uuid5(UUID_NAMESPACE, f"{dataset_salt}::{seed}")
     return URIRef(KB[f"{prefix}-{uuid_val}"])
 
 def add_individual_triples(g: Graph, entity: URIRef, label: str) -> None:
@@ -288,15 +295,15 @@ def build_dataset_seed_salt(
 
 def build_organism_seed(
     org_label: Optional[str],
-    taxon_label: Optional[str],
-    cfg: Optional[Dict[str, Any]] = None,
-    metadata_map: Optional[Dict[str, Any]] = None
+    taxon_label: Optional[str]
 ) -> str:
-    """Build the shared organism UUID seed used for both creation and fallback lookup."""
-    dataset_salt = build_dataset_seed_salt(cfg=cfg, metadata_map=metadata_map)
+    """Build the shared organism UUID seed used for both creation and fallback lookup.
+
+    Dataset scoping is applied centrally by generate_uri().
+    """
     taxon_component = normalize_seed_component(taxon_label) or "unknown-taxon"
     organism_component = normalize_seed_component(org_label) or "organism"
-    return "::".join([dataset_salt, taxon_component, organism_component])
+    return "::".join([taxon_component, organism_component])
 
 
 def add_revision_provenance(g: Graph, statement_uri: URIRef, char_id: str, metadata_map: Dict[str, Any]) -> None:
@@ -929,23 +936,21 @@ def handle_organism_and_locators(
 
 
 def compute_default_organism_instance_uri_from_dataset(
-        dataset: List[Dict[str, Any]],
-        cfg: Optional[Dict[str, Any]] = None,
-        metadata_map: Optional[Dict[str, Any]] = None
+        dataset: List[Dict[str, Any]]
     ) -> Optional[URIRef]:
     """
     Compute a canonical organism instance URI deterministically from the dataset.
-    Uses the first row that has an Organism section and salts the UUID with the
-    dataset identifier, metadata provenance fingerprint, taxon_label, and
-    organism label to match the per-species organism instances created elsewhere.
-    No triples are added here.
+    Uses the first row that has an Organism section and builds the UUID seed from
+    that row's taxon_label and organism label; dataset scoping is applied
+    centrally by generate_uri(), matching the per-species organism instances
+    created elsewhere. No triples are added here.
     """
     for row in dataset:
         org = row.get("Organism") or {}
         org_label = org.get("Label")
         taxon_label = row.get("SpeciesLabel")
         if org_label and taxon_label:
-            seed = build_organism_seed(org_label, taxon_label, cfg=cfg, metadata_map=metadata_map)
+            seed = build_organism_seed(org_label, taxon_label)
             return generate_uri("org", seed)
     return None
 
@@ -1776,8 +1781,9 @@ def build_cdao_matrix(
     """
     g = create_graph_with_namespaces()
 
-    # Create matrix URI using a stable prefix
-    mx_label = row.get("MatrixLabel")
+    # Create matrix URI using a stable prefix. The label comes from the dataset
+    # itself (previously this accidentally read a leftover module-level 'row').
+    mx_label = dataset[0].get("MatrixLabel") if dataset else None
     matrix_uri = generate_uri("mx", mx_label or "default_matrix")
     g.add((matrix_uri, RDF.type, CDAO["0000056"]))  # CDAO Matrix/CharacterStateDataMatrix
     # Add sequential label only if not set already

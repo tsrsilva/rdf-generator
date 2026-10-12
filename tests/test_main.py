@@ -77,25 +77,19 @@ def test_graph_building():
         assert ns in found_ns, f"Namespace {ns} missing in base graph"
 
 
-def test_organism_seed_uses_dataset_id_and_metadata_fingerprint():
-    """Check that dataset_id wins and metadata changes the fallback seed."""
-    build_organism_seed = rdf_main.build_organism_seed
+def test_instance_uris_are_scoped_per_dataset(monkeypatch):
+    """Check that the same seed yields distinct deterministic URIs per dataset_id."""
+    seed = rdf_main.build_organism_seed("female organism", "Taxon_A")
 
-    cfg_a = {"dataset_id": "dataset-a", "input": {"json": "examples/minimal.json"}}
-    cfg_blank = {"dataset_id": "", "input": {"json": "examples/minimal.json"}}
-    cfg_b = {"dataset_id": "dataset-b", "input": {"json": "examples/minimal.json"}}
-    metadata_a = {"1": {"source_id": "paper-alpha", "target_id": "orcid-1"}}
-    metadata_b = {"1": {"source_id": "paper-gamma", "target_id": "orcid-1"}}
+    monkeypatch.setitem(rdf_main.config, "dataset_id", "dataset-a")
+    uri_a1 = rdf_main.generate_uri("org", seed)
+    uri_a2 = rdf_main.generate_uri("org", seed)
 
-    seed_a = build_organism_seed("female organism", "Taxon_A", cfg=cfg_a, metadata_map=metadata_a)
-    seed_b = build_organism_seed("female organism", "Taxon_A", cfg=cfg_a, metadata_map=metadata_b)
-    seed_c = build_organism_seed("female organism", "Taxon_A", cfg=cfg_b, metadata_map=metadata_a)
-    seed_d = build_organism_seed("female organism", "Taxon_A", cfg=cfg_blank, metadata_map=metadata_a)
-    seed_e = build_organism_seed("female organism", "Taxon_A", cfg=cfg_blank, metadata_map=metadata_b)
+    monkeypatch.setitem(rdf_main.config, "dataset_id", "dataset-b")
+    uri_b = rdf_main.generate_uri("org", seed)
 
-    assert seed_a == seed_b
-    assert seed_a != seed_c
-    assert seed_d != seed_e
+    assert uri_a1 == uri_a2  # deterministic within a dataset
+    assert uri_a1 != uri_b   # distinct across datasets
 
 
 def test_dataset_seed_salt_metadata_fallback_chain():
