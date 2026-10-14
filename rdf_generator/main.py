@@ -307,7 +307,25 @@ def build_organism_seed(
 
 
 def add_revision_provenance(g: Graph, statement_uri: URIRef, char_id: str, metadata_map: Dict[str, Any]) -> None:
-    """Attach prov:hadPrimarySource for statements that have metadata provenance."""
+    """Attach a full PROV-O provenance chain to a character statement.
+
+    Model (per metadata row keyed by Char_ID):
+
+        statement (prov:Entity)
+          |-- prov:wasDerivedFrom   --> source entity
+          |-- prov:hadPrimarySource --> source entity
+          |-- prov:wasGeneratedBy   --> modelling activity
+          `-- prov:wasAttributedTo  --> modeller agent
+
+        modelling activity (prov:Activity)
+          |-- prov:used              --> source entity
+          `-- prov:wasAssociatedWith --> modeller agent
+
+    The source entity represents the original character description from the
+    original study; the modeller agent represents the person who modelled
+    this statement. When Modeller_ID is a URI (e.g. ORCID), it is reused
+    directly as the agent URI; otherwise a stable KB agent URI is minted.
+    """
     record = metadata_map.get(char_id)
     if not record:
         return
@@ -325,11 +343,11 @@ def add_revision_provenance(g: Graph, statement_uri: URIRef, char_id: str, metad
     if not (source_text or source_id):
         return
 
-    # Seed the source entity with stable identifiers (source_id + modeller
-    # identity) when available, matching the dataset fingerprint fallback chain.
-    modeller_identity = (target_id or target_author).lower()
-    if source_id and modeller_identity:
-        seed_tail = f"{source_id.lower()}::{modeller_identity}"
+    # ---------- Source entity: original character description ----------
+    modeller_identity = target_id or target_author
+    modeller_identity_norm = modeller_identity.lower()
+    if source_id and modeller_identity_norm:
+        seed_tail = f"{source_id.lower()}::{modeller_identity_norm}"
     elif source_id:
         seed_tail = source_id.lower()
     else:
@@ -338,8 +356,46 @@ def add_revision_provenance(g: Graph, statement_uri: URIRef, char_id: str, metad
     source_uri = generate_uri("src", f"revision-source::{char_id}::{seed_tail}")
     g.add((source_uri, RDF.type, PROV.Entity))
     g.add((source_uri, RDFS.label, Literal(source_text or source_id)))
+    if source_id:
+        g.add((source_uri, DC.identifier, Literal(source_id)))
+
+    # ---------- Modeller agent (prov:Agent / prov:Person) ----------
+    agent_uri: Optional[URIRef] = None
+    if modeller_identity_norm:
+        if re.match(r"^https?://", modeller_identity, flags=re.IGNORECASE):
+            # Reuse external identifier (e.g. ORCID) directly as the agent URI
+            agent_uri = URIRef(modeller_identity)
+        else:
+            agent_uri = generate_uri("agent", f"modeller::{modeller_identity_norm}")
+        g.add((agent_uri, RDF.type, PROV.Agent))
+        g.add((agent_uri, RDF.type, PROV.Person))
+        agent_label = target_author or target_id
+        if agent_label:
+            g.add((agent_uri, RDFS.label, Literal(agent_label)))
+        # Keep non-URI identifiers visible when they are not the agent URI
+        if target_id and str(agent_uri) != target_id:
+            if re.match(r"^https?://", target_id, flags=re.IGNORECASE):
+                g.add((agent_uri, RDFS.seeAlso, URIRef(target_id)))
+            else:
+                g.add((agent_uri, DC.identifier, Literal(target_id)))
+
+    # ---------- Modelling activity (prov:Activity) ----------
+    activity_uri = generate_uri("act", f"modelling::{char_id}::{modeller_identity_norm or 'unknown'}")
+    g.add((activity_uri, RDF.type, PROV.Activity))
+    g.add((activity_uri, RDFS.label, Literal(f"Modelling of character {char_id}")))
+    g.add((activity_uri, PROV.used, source_uri))
+    if agent_uri is not None:
+        g.add((activity_uri, PROV.wasAssociatedWith, agent_uri))
+
+    # ---------- Statement links ----------
+    g.add((statement_uri, RDF.type, PROV.Entity))
+    # prov:hadPrimarySource is a subproperty of prov:wasDerivedFrom; both are
+    # asserted explicitly so non-reasoning consumers see the full chain.
+    g.add((statement_uri, PROV.wasDerivedFrom, source_uri))
     g.add((statement_uri, PROV.hadPrimarySource, source_uri))
-    g.add((statement_uri, PROV.wasAttributedTo, Literal(modeller_identity)))
+    g.add((statement_uri, PROV.wasGeneratedBy, activity_uri))
+    if agent_uri is not None:
+        g.add((statement_uri, PROV.wasAttributedTo, agent_uri))
 
 def load_pmck_label_index(pmck_file: str) -> Dict[str, str]:
     """Build normalized label -> URI index from pmck.owl."""
@@ -536,6 +592,7 @@ def build_base_graph() -> Graph:
 
     ## Datatype Properties
     base.add((DC.description, RDF.type, OWL.DatatypeProperty))
+    base.add((DC.identifier, RDF.type, OWL.DatatypeProperty))
     base.add((DWC.taxonID, RDF.type, OWL.DatatypeProperty))
     base.add((DWC.parentNameUsageID, RDF.type, OWL.DatatypeProperty))
     base.add((KB.sortCharNum, RDF.type, OWL.DatatypeProperty))
@@ -550,8 +607,21 @@ def build_base_graph() -> Graph:
 
     ## Provenance
     base.add((PROV.Entity, RDF.type, OWL.Class))
+    base.add((PROV.Agent, RDF.type, OWL.Class))
+    base.add((PROV.Person, RDF.type, OWL.Class))
+    base.add((PROV.Activity, RDF.type, OWL.Class))
     base.add((PROV.hadPrimarySource, RDF.type, OWL.ObjectProperty))
     base.add((PROV.hadPrimarySource, RDFS.label, Literal("had primary source")))
+    base.add((PROV.wasDerivedFrom, RDF.type, OWL.ObjectProperty))
+    base.add((PROV.wasDerivedFrom, RDFS.label, Literal("was derived from")))
+    base.add((PROV.wasGeneratedBy, RDF.type, OWL.ObjectProperty))
+    base.add((PROV.wasGeneratedBy, RDFS.label, Literal("was generated by")))
+    base.add((PROV.wasAttributedTo, RDF.type, OWL.ObjectProperty))
+    base.add((PROV.wasAttributedTo, RDFS.label, Literal("was attributed to")))
+    base.add((PROV.used, RDF.type, OWL.ObjectProperty))
+    base.add((PROV.used, RDFS.label, Literal("used")))
+    base.add((PROV.wasAssociatedWith, RDF.type, OWL.ObjectProperty))
+    base.add((PROV.wasAssociatedWith, RDFS.label, Literal("was associated with")))
 
     return base
 
@@ -1365,7 +1435,8 @@ def write_ttl_with_sections(graph: Graph, ttl_file: str) -> None:
     KB_NS = str(KB)
     kb_generated_prefixes = (
         "sp-", "phe-", "org-", "loc-", "var-", "qua-", "sta-",
-        "mx-", "char-", "tu-", "cell-", "comp-", "restr-"
+        "mx-", "char-", "tu-", "cell-", "comp-", "restr-",
+        "src-", "agent-", "act-"
     )
     force_full_iri_prefixes = {"bfo", "cdao", "iao", "pato", "phb", "pmck", "ro", "txr","uberon"}
 
