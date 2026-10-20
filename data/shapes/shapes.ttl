@@ -154,6 +154,7 @@ phb:VariableNodeShape
   sh:property [
     sh:path rdfs:label ;
     sh:minCount 1 ;
+    sh:maxCount 1 ;
   ] .
   
 ################
@@ -205,6 +206,7 @@ phb:StateNodeShape
   sh:property [
     sh:path rdfs:label ;
     sh:minCount 1 ;
+    sh:maxCount 1 ;
   ] .
 
 #############
