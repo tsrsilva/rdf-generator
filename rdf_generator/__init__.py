@@ -7,7 +7,7 @@ RDF Generator
 Generates RDF phenotype graphs from JSON and NEXUS matrices.
 """
 
-__version__ = "0.0.1"  # initial version; semantic-release will auto-bump
+__version__ = "1.2.0"  # initial version; semantic-release will auto-bump
 
 # Import the main entry point for easy access
 from .main import main

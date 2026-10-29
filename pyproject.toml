@@ -3,7 +3,7 @@
 
 [project]
 name = "rdf-generator"
-version = "0.0.1"
+version = "1.2.0"
 description = "Generates RDF phenotype graphs from JSON and NEXUS matrices."
 authors = [
     { name = "Thiago S. R. Silva", email = "thiago.sanchesranzanidasilva@helsinki.fi" },
